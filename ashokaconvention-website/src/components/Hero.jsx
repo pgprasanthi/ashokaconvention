@@ -1,13 +1,14 @@
-import heroImage from '../gallery/WhatsApp Image 2026-05-16 at 1.04.23 PM.jpeg'
+import heroImage from '../gallery/palace-exterior.jpeg'
 
 export default function Hero({ onPageChange }) {
   return (
-    <section className="hero" style={{ backgroundImage: `url(${heroImage})` }}>
+    <section className="hero">
+      <img src={heroImage} alt="Ashok Palace" className="hero-bg-img" />
       <div className="hero-overlay"></div>
       <div className="hero-inner">
-        <h1>A Dream Destination for Any Celebrations</h1>
-        <p>Create unforgettable memories at Ashok Palace</p>
-        <button className="cta" onClick={() => onPageChange('contact')}>Get in touch</button>
+        <h1>A Dream Destination for Any Celebration</h1>
+        <p className="hero-subtitle">Create unforgettable memories with your loved ones</p>
+        <button className="cta" onClick={() => onPageChange('contact')}>Get in Touch</button>
       </div>
     </section>
   )

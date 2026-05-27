@@ -26,7 +26,7 @@ export default function Contact(){
           </div>
           
           <div className="contact-item">
-            <h3>📍 Location</h3>
+            <h3>📍 How to Get There</h3>
             <p>
               <a href="https://maps.app.goo.gl/mVuB99xWRqjuzyJS6?g_st=aw" target="_blank" rel="noopener noreferrer">View on Map</a>
             </p>
