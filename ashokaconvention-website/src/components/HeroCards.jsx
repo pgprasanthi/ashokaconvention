@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import { FaParking, FaUtensils, FaUsers, FaTree } from 'react-icons/fa'
 import { MdKingBed, MdCorporateFare } from 'react-icons/md'
 import WeddingHallIcon from './WeddingHallIcon'
@@ -47,60 +46,29 @@ const heroCards = [
   }
 ]
 
-// Duplicate cards for seamless infinite loop
+// Duplicate cards for seamless CSS-animation loop
 const allCards = [...heroCards, ...heroCards]
 
 export default function HeroCards() {
-  const containerRef = useRef(null)
-  const rafRef = useRef(null)
-
-  useEffect(() => {
-    const node = containerRef.current
-    if (!node) return
-
-    const step = 0.6
-
-    const scroll = () => {
-      node.scrollLeft += step
-      // Reset halfway through the duplicated list for seamless loop
-      if (node.scrollLeft >= node.scrollWidth / 2) {
-        node.scrollLeft = 0
-      }
-      rafRef.current = requestAnimationFrame(scroll)
-    }
-
-    rafRef.current = requestAnimationFrame(scroll)
-
-    const pause  = () => cancelAnimationFrame(rafRef.current)
-    const resume = () => { rafRef.current = requestAnimationFrame(scroll) }
-
-    node.addEventListener('mouseenter', pause)
-    node.addEventListener('mouseleave', resume)
-
-    return () => {
-      cancelAnimationFrame(rafRef.current)
-      node.removeEventListener('mouseenter', pause)
-      node.removeEventListener('mouseleave', resume)
-    }
-  }, [])
-
   return (
     <section className="hero-cards-panel">
-      <div className="hero-cards-container" ref={containerRef}>
-        {allCards.map((card, idx) => {
-          const Icon = card.icon
-          return (
-            <div key={idx} className="hero-card">
-              <div className="hero-card-icon-wrap">
-                <Icon className="hero-card-icon" />
+      <div className="hero-cards-container">
+        <div className="hero-cards-track">
+          {allCards.map((card, idx) => {
+            const Icon = card.icon
+            return (
+              <div key={idx} className="hero-card">
+                <div className="hero-card-icon-wrap">
+                  <Icon className="hero-card-icon" />
+                </div>
+                <div className="hero-card-copy">
+                  <h3>{card.title}</h3>
+                  <p>{card.subtitle}</p>
+                </div>
               </div>
-              <div className="hero-card-copy">
-                <h3>{card.title}</h3>
-                <p>{card.subtitle}</p>
-              </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </section>
   )
