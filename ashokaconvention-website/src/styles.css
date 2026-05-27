@@ -18,7 +18,7 @@ main{flex:1}
 /* ── Header ── */
 .site-header{
   position:fixed;top:0;left:0;right:0;z-index:100;
-  padding:0 48px;height:72px;
+  padding:0 48px;height:80px;
   display:flex;align-items:center;justify-content:space-between;gap:20px;
   background:transparent;
   transition:background 0.35s ease,box-shadow 0.35s ease;
@@ -47,7 +47,7 @@ main{flex:1}
 
 /* ── Nav dropdown ── */
 .nav-dropdown{
-  position:fixed;top:72px;right:48px;z-index:99;
+  position:fixed;top:80px;right:48px;z-index:99;
   min-width:180px;background:white;border-radius:10px;
   box-shadow:0 8px 32px rgba(15,23,42,0.15);
   padding:8px 0;
@@ -193,7 +193,7 @@ main{flex:1}
 @media (max-width:767px){
   .hero-bg-img{max-height:65vh;min-height:300px}
   .site-header{padding:0 20px}
-  .hero-inner{padding:90px 20px 24px;justify-content:flex-start}
+  .hero-inner{padding:98px 20px 24px;justify-content:flex-start}
   .nav-dropdown{right:20px}
   .contact-details{grid-template-columns:1fr}
 }
