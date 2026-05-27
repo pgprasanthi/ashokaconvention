@@ -1,0 +1,8 @@
+# System files
+.DS_Store
+
+# Editor
+.vscode/
+
+# Public / build output
+public/
