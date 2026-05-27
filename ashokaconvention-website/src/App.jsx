@@ -15,7 +15,7 @@ export default function App() {
     <div className="app" >
       <Header onPageChange={setCurrentPage} currentPage={currentPage} />
       <main  >
-        <Hero />
+        <Hero onPageChange={setCurrentPage} />
         <HeroCards />
         {currentPage === 'home' && <Home />}
         {currentPage === 'services' && <Services />}

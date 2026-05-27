@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import diningIcon from '../assets/dining.png'
 import parkingIcon from '../assets/parking.png'
 import accommodationIcon from '../assets/accomodation.png'
@@ -51,41 +50,9 @@ const heroCards = [
 ]
 
 export default function HeroCards() {
-  const containerRef = useRef(null)
-
-  useEffect(() => {
-    const node = containerRef.current
-    if (!node) return
-
-    let rafId = null
-    const step = 0.4
-
-    const scrollLoop = () => {
-      if (!node) return
-      node.scrollLeft += step
-      if (node.scrollLeft >= node.scrollWidth - node.clientWidth - 1) {
-        node.scrollLeft = 0
-      }
-      rafId = requestAnimationFrame(scrollLoop)
-    }
-
-    rafId = requestAnimationFrame(scrollLoop)
-
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-    }
-  }, [])
-
-  const handleWheel = (event) => {
-    const node = containerRef.current
-    if (!node) return
-    event.preventDefault()
-    node.scrollLeft += event.deltaY
-  }
-
   return (
     <section className="hero-cards-panel">
-      <div className="hero-cards-container" ref={containerRef} onWheel={handleWheel}>
+      <div className="hero-cards-container">
         {heroCards.map((card, idx) => (
           <div key={idx} className="hero-card">
             <img src={card.image} alt={card.title} />
