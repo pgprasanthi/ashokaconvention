@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { FaWhatsapp } from 'react-icons/fa'
 import Header from './components/Header'
 import Hero from './components/Hero'
 import HeroCards from './components/HeroCards'
@@ -44,6 +45,17 @@ export default function App() {
         </div>
       </main>
       <Footer />
+
+      {/* Floating WhatsApp button */}
+      <a
+        href="https://wa.me/919493068777"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="whatsapp-fab"
+        aria-label="Chat on WhatsApp"
+      >
+        <FaWhatsapp />
+      </a>
     </div>
   )
 }
