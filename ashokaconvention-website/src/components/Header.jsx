@@ -38,7 +38,7 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
     <>
       <header className={`site-header${scrolled ? ' scrolled' : ''}`}>
         <div className="logo" onClick={() => handleNav('home')} style={{ cursor: 'pointer' }}>
-          <img src={logoImage} alt="Ashoka Convention" width="64" height="64" />
+          <img src={logoImage} alt="Ashoka Convention" />
         </div>
 
         <button

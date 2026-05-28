@@ -26,7 +26,7 @@ main{flex:1}
 .site-header.scrolled{background:white;box-shadow:0 2px 20px rgba(15,23,42,0.10)}
 .logo{display:flex;align-items:center;gap:12px;font-weight:700;font-size:1.2rem;color:white;transition:color 0.35s ease}
 .site-header.scrolled .logo{color:#0f172a}
-.logo img{border-radius:50%;object-fit:cover;flex-shrink:0}
+.logo img{border-radius:50%;object-fit:cover;object-position:center 35%;flex-shrink:0;width:64px;height:64px}
 
 /* ── Hamburger ── */
 .hamburger{
@@ -68,8 +68,8 @@ main{flex:1}
 .bc-link.active{color:var(--accent);font-weight:700;border-left-color:var(--accent);background:#f0fafa}
 
 /* ── Hero ── */
-.hero{position:relative;color:white;overflow:hidden;display:block}
-.hero-bg-img{width:100%;height:auto;display:block;max-height:80vh;object-fit:cover;object-position:center center}
+.hero{position:relative;color:white;overflow:hidden;display:block;background:#0f172a}
+.hero-bg-img{width:100%;height:auto;display:block}
 .hero-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.50);z-index:1}
 .hero-inner{
   position:absolute;inset:0;z-index:2;
@@ -185,13 +185,14 @@ main{flex:1}
 
 /* ── Responsive ── */
 @media (min-width:768px){
-  .hero-bg-img{max-height:50vh}
+  .hero{aspect-ratio:2.5/1}
+  .hero-bg-img{height:100%;object-fit:contain}
   .hero h1{font-size:1.9rem}
   .gallery-container h2,.services-container h2,.testimonials-container h2,.partners-container h2,.contact-section h2{font-size:1.35rem}
   .site-header{padding:0 64px}
 }
 @media (max-width:767px){
-  .hero-bg-img{max-height:65vh;min-height:300px}
+  /* hero image scales naturally at mobile width */
   .site-header{padding:0 20px}
   .hero-inner{padding:98px 20px 24px;justify-content:flex-start}
   .nav-dropdown{right:20px}
