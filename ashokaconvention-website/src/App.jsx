@@ -33,7 +33,7 @@ export default function App() {
     <div className="app">
       <Header onPageChange={handlePageChange} currentPage={currentPage} scrolled={headerScrolled} />
       <main>
-        <Hero onPageChange={handlePageChange} />
+        <Hero />
         <HeroCards />
         <div id="page-content">
           {currentPage === 'home' && <Home />}

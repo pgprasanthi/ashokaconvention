@@ -15,7 +15,7 @@ const slides = [
   slide6, slide7, slide8, slide9, slide10
 ]
 
-export default function Hero({ onPageChange }) {
+export default function Hero() {
   const [current, setCurrent] = useState(0)
 
   useEffect(() => {
@@ -26,19 +26,30 @@ export default function Hero({ onPageChange }) {
   }, [])
 
   return (
-    <section className="hero">
-      {slides.map((src, idx) => (
-        <img
-          key={idx}
-          src={src}
-          alt="Ashoka Convention"
-          className={`hero-bg-img${idx === current ? ' active' : ''}`}
-        />
-      ))}
-      <div className="hero-overlay" />
-      <div className="hero-inner">
-        <button className="cta" onClick={() => onPageChange('contact')}>Get in Touch</button>
+    <>
+      <section className="hero">
+        {slides.map((src, idx) => (
+          <img
+            key={idx}
+            src={src}
+            alt="Ashoka Convention"
+            className={`hero-bg-img${idx === current ? ' active' : ''}`}
+          />
+        ))}
+        <div className="hero-overlay" />
+      </section>
+
+      {/* Dot navigation */}
+      <div className="hero-dots">
+        {slides.map((_, idx) => (
+          <button
+            key={idx}
+            className={`hero-dot${idx === current ? ' active' : ''}`}
+            onClick={() => setCurrent(idx)}
+            aria-label={`Go to slide ${idx + 1}`}
+          />
+        ))}
       </div>
-    </section>
+    </>
   )
 }
