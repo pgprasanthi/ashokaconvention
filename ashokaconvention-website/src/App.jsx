@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FaWhatsapp } from 'react-icons/fa'
+import { FaWhatsapp, FaPlay } from 'react-icons/fa'
 import Header from './components/Header'
 import Hero from './components/Hero'
 import HeroCards from './components/HeroCards'
@@ -14,6 +14,7 @@ import Footer from './components/Footer'
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home')
   const [headerScrolled, setHeaderScrolled] = useState(false)
+  const [videoOpen, setVideoOpen] = useState(false)
 
   useEffect(() => {
     const onScroll = () => setHeaderScrolled(window.scrollY > 60)
@@ -46,6 +47,15 @@ export default function App() {
       </main>
       <Footer />
 
+      {/* Floating play button */}
+      <button
+        className="video-fab"
+        onClick={() => setVideoOpen(true)}
+        aria-label="Watch promo video"
+      >
+        <FaPlay />
+      </button>
+
       {/* Floating WhatsApp button */}
       <a
         href="https://wa.me/919493068777"
@@ -56,6 +66,21 @@ export default function App() {
       >
         <FaWhatsapp />
       </a>
+
+      {/* Video modal */}
+      {videoOpen && (
+        <div className="video-modal-overlay" onClick={() => setVideoOpen(false)}>
+          <div className="video-modal" onClick={e => e.stopPropagation()}>
+            <button className="video-modal-close" onClick={() => setVideoOpen(false)}>✕</button>
+            <video
+              src="/promo-video.mp4"
+              controls
+              autoPlay
+              className="video-modal-player"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
