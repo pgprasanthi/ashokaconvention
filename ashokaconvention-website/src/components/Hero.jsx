@@ -1,20 +1,18 @@
 import { useState, useEffect } from 'react'
-import img01 from '../gallery/palace-exterior.jpeg'
-import img02 from '../gallery/main-hall-1.jpeg'
-import img03 from '../gallery/engagement-party-2.jpeg'
-import img04 from '../gallery/wedding-reception-1.jpeg'
-import img05 from '../gallery/main-hall-2.jpeg'
-import img06 from '../gallery/decorations-1.jpeg'
-import img07 from '../gallery/interior-design-1.jpeg'
-import img08 from '../gallery/dining-1.jpeg'
-import img09 from '../gallery/engagement-party-1.jpeg'
-import img10 from '../gallery/interior-design-2.jpeg'
-import img11 from '../gallery/dining-2.jpeg'
-import img12 from '../gallery/lawn-outdoor-2.jpeg'
+import slide1  from '../assets/slide-exterior.jpeg'
+import slide2  from '../assets/slide-banquet-hall.jpeg'
+import slide3  from '../assets/slide-wedding-stage.jpeg'
+import slide4  from '../assets/slide-reception-stage.jpeg'
+import slide5  from '../assets/slide-lit-entrance.jpeg'
+import slide6  from '../assets/slide-floral-pathway.jpeg'
+import slide7  from '../assets/slide-traditional-decor.jpeg'
+import slide8  from '../assets/slide-hall-entrance.jpeg'
+import slide9  from '../assets/slide-floral-stage.jpeg'
+import slide10 from '../assets/slide-golden-entrance.jpeg'
 
 const slides = [
-  img01, img02, img03, img04, img05, img06,
-  img07, img08, img09, img10, img11, img12
+  slide1, slide2, slide3, slide4, slide5,
+  slide6, slide7, slide8, slide9, slide10
 ]
 
 export default function Hero({ onPageChange }) {
@@ -33,14 +31,12 @@ export default function Hero({ onPageChange }) {
         <img
           key={idx}
           src={src}
-          alt="Ashok Palace"
+          alt="Ashoka Convention"
           className={`hero-bg-img${idx === current ? ' active' : ''}`}
         />
       ))}
       <div className="hero-overlay" />
       <div className="hero-inner">
-        <h1>A Dream Destination for Any Celebration</h1>
-        <p className="hero-subtitle">Create unforgettable memories with your loved ones</p>
         <button className="cta" onClick={() => onPageChange('contact')}>Get in Touch</button>
       </div>
     </section>
