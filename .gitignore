@@ -6,3 +6,6 @@
 
 # Public / build output
 public/
+
+# Downloaded OAuth credentials
+client_secret_*.json

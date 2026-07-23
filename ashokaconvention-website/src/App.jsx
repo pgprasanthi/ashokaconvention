@@ -10,11 +10,14 @@ import Contact from './components/Contact'
 import Feedback from './components/Feedback'
 import Partners from './components/Partners'
 import Footer from './components/Footer'
+import AdminPanel from './components/AdminPanel'
+import { useAuth } from './context/AuthContext'
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home')
   const [headerScrolled, setHeaderScrolled] = useState(false)
   const [videoOpen, setVideoOpen] = useState(false)
+  const { isAdmin } = useAuth()
 
   useEffect(() => {
     const onScroll = () => setHeaderScrolled(window.scrollY > 60)
@@ -43,6 +46,7 @@ export default function App() {
           {currentPage === 'contact' && <Contact />}
           {currentPage === 'feedback' && <Feedback />}
           {currentPage === 'partners' && <Partners />}
+          {currentPage === 'admin' && isAdmin && <AdminPanel />}
         </div>
       </main>
       <Footer />

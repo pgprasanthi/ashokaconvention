@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import logoImage from '../assets/logo.jpeg'
+import { useAuth } from '../context/AuthContext'
+import GoogleSignInButton from './GoogleSignInButton'
 
 export default function Header({ onPageChange, currentPage, scrolled }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const dropdownRef = useRef(null)
   const hamburgerRef = useRef(null)
+  const { user, isAdmin, logout } = useAuth()
 
   const navItems = [
     { id: 'home',     label: 'Home' },
@@ -12,7 +15,8 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
     { id: 'gallery',  label: 'Gallery' },
     { id: 'feedback', label: 'Feedback' },
     { id: 'partners', label: 'Partners' },
-    { id: 'contact',  label: 'Contact' }
+    { id: 'contact',  label: 'Contact' },
+    ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : [])
   ]
 
   // Close on outside click
@@ -65,6 +69,17 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
             </span>
           ))}
         </nav>
+
+        <div className="nav-auth">
+          {user ? (
+            <span className="nav-auth-user">
+              {user.name || user.email} ({user.role})
+              <button className="bc-link" onClick={logout}>Sign out</button>
+            </span>
+          ) : (
+            <GoogleSignInButton />
+          )}
+        </div>
       </div>
     </>
   )

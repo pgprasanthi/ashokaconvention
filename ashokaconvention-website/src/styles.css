@@ -67,6 +67,15 @@ main{flex:1}
 .bc-link:hover{background:#f1f5f9;color:#0f172a;border-left-color:var(--accent)}
 .bc-link.active{color:var(--accent);font-weight:700;border-left-color:var(--accent);background:#f0fafa}
 
+/* ── Auth ── */
+.nav-auth{padding:12px 20px;border-top:1px solid #eef1f4}
+.nav-auth-user{display:flex;flex-direction:column;gap:6px;font-size:0.9rem;color:#334155}
+.nav-auth-user .bc-link{padding:6px 0;width:auto}
+.google-signin-missing{font-size:0.8rem;color:#94a3b8;font-style:italic}
+
+/* ── Admin panel ── */
+.admin-panel{max-width:720px;margin:60px auto;padding:0 24px}
+
 /* ── Hero ── */
 .hero{position:relative;color:white;overflow:hidden;display:block;background:#0f172a;height:62vw;min-height:280px}
 .hero-bg-img{
