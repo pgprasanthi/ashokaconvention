@@ -17,13 +17,16 @@ const auth = new google.auth.GoogleAuth({
 })
 const calendar = google.calendar({ version: 'v3', auth })
 
+// Timed events have start.dateTime; all-day events (e.g. created on mobile
+// without picking specific times) only have start.date - fall back to that
+// so those don't silently disappear from the app.
 function toBooking(event) {
   return {
     id: event.id,
     title: event.summary || '',
     description: event.description || '',
-    start: event.start?.dateTime,
-    end: event.end?.dateTime
+    start: event.start?.dateTime || (event.start?.date ? `${event.start.date}T00:00:00` : undefined),
+    end: event.end?.dateTime || (event.end?.date ? `${event.end.date}T00:00:00` : undefined)
   }
 }
 
