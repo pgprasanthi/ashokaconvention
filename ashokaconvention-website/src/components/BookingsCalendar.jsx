@@ -9,7 +9,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
 const EMPTY_FORM = {
   title: '', description: '', start: '', end: '',
   customerName: '', customerEmail: '', customerMobile: '',
-  advancePayment: '', balance: '', paymentDate: ''
+  advancePayment: '', balance: '', paymentDate: '', fullyPaid: false
 }
 
 const localizer = dateFnsLocalizer({
@@ -37,7 +37,7 @@ export default function BookingsCalendar() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [editingIncomplete, setEditingIncomplete] = useState(false)
-  const [editingMeta, setEditingMeta] = useState(null)
+  const [paymentLocked, setPaymentLocked] = useState(false)
   const modalRef = useRef(null)
 
   // While the modal is open: lock background scroll and keep keyboard focus
@@ -114,12 +114,7 @@ export default function BookingsCalendar() {
     setFormMode('edit')
     setEditingId(event.id)
     setEditingIncomplete(event.resource.hasDetails === false)
-    setEditingMeta({
-      createdBy: event.resource.createdBy,
-      createdDate: event.resource.createdDate,
-      updatedBy: event.resource.updatedBy,
-      updatedDate: event.resource.updatedDate
-    })
+    setPaymentLocked(Boolean(event.resource.fullyPaid))
     const b = event.resource
     setForm({
       title: b.title,
@@ -131,7 +126,8 @@ export default function BookingsCalendar() {
       customerMobile: b.customerMobile || '',
       advancePayment: b.advancePayment || '',
       balance: b.balance || '',
-      paymentDate: b.paymentDate || ''
+      paymentDate: b.paymentDate || '',
+      fullyPaid: Boolean(b.fullyPaid)
     })
   }
 
@@ -139,11 +135,9 @@ export default function BookingsCalendar() {
     setFormMode(null)
     setEditingId(null)
     setEditingIncomplete(false)
-    setEditingMeta(null)
+    setPaymentLocked(false)
     setForm(EMPTY_FORM)
   }
-
-  const formatMetaDate = (iso) => (iso ? new Date(iso).toLocaleString() : '—')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -158,7 +152,8 @@ export default function BookingsCalendar() {
       customerMobile: form.customerMobile,
       advancePayment: form.advancePayment,
       balance: form.balance,
-      paymentDate: form.paymentDate
+      paymentDate: form.paymentDate,
+      fullyPaid: form.fullyPaid
     }
     try {
       const url = formMode === 'edit' ? `${API_URL}/api/bookings/${editingId}` : `${API_URL}/api/bookings`
@@ -227,102 +222,122 @@ export default function BookingsCalendar() {
               </p>
             )}
 
-            <h5>Booking</h5>
-            <label className="booking-field">
-              Title
-              <input
-                required
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-              />
-            </label>
-            <label className="booking-field">
-              Start
-              <input
-                type="datetime-local"
-                required
-                value={form.start}
-                onChange={(e) => setForm({ ...form, start: e.target.value })}
-              />
-            </label>
-            <label className="booking-field">
-              End
-              <input
-                type="datetime-local"
-                required
-                value={form.end}
-                onChange={(e) => setForm({ ...form, end: e.target.value })}
-              />
-            </label>
-            <label className="booking-field">
-              Notes
-              <input
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-              />
-            </label>
+            <div className="booking-modal-grid">
+              <label className="booking-field booking-field-full">
+                Title *
+                <input
+                  required
+                  disabled={formMode === 'edit'}
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                />
+              </label>
+              <label className="booking-field">
+                Start *
+                <input
+                  type="datetime-local"
+                  required
+                  disabled={formMode === 'edit'}
+                  value={form.start}
+                  onChange={(e) => setForm({ ...form, start: e.target.value })}
+                />
+              </label>
+              <label className="booking-field">
+                End *
+                <input
+                  type="datetime-local"
+                  required
+                  disabled={formMode === 'edit'}
+                  value={form.end}
+                  onChange={(e) => setForm({ ...form, end: e.target.value })}
+                />
+              </label>
+              <label className="booking-field booking-field-full">
+                Notes
+                <input
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                />
+              </label>
 
-            <h5>Customer</h5>
-            <label className="booking-field">
-              Name
-              <input
-                value={form.customerName}
-                onChange={(e) => setForm({ ...form, customerName: e.target.value })}
-              />
-            </label>
-            <label className="booking-field">
-              Email
-              <input
-                type="email"
-                value={form.customerEmail}
-                onChange={(e) => setForm({ ...form, customerEmail: e.target.value })}
-              />
-            </label>
-            <label className="booking-field">
-              Mobile
-              <input
-                value={form.customerMobile}
-                onChange={(e) => setForm({ ...form, customerMobile: e.target.value })}
-              />
-            </label>
+              <h5>Customer</h5>
+              <label className="booking-field">
+                Name *
+                <input
+                  required
+                  disabled={formMode === 'edit'}
+                  value={form.customerName}
+                  onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+                />
+              </label>
+              <label className="booking-field">
+                Email
+                <input
+                  type="email"
+                  disabled={formMode === 'edit'}
+                  value={form.customerEmail}
+                  onChange={(e) => setForm({ ...form, customerEmail: e.target.value })}
+                />
+              </label>
+              <label className="booking-field booking-field-full">
+                Mobile *
+                <input
+                  required
+                  value={form.customerMobile}
+                  onChange={(e) => setForm({ ...form, customerMobile: e.target.value })}
+                />
+              </label>
 
-            <h5>Payment</h5>
-            <label className="booking-field">
-              Advance payment
-              <input
-                type="number"
-                value={form.advancePayment}
-                onChange={(e) => setForm({ ...form, advancePayment: e.target.value })}
-              />
-            </label>
-            <label className="booking-field">
-              Balance
-              <input
-                type="number"
-                value={form.balance}
-                onChange={(e) => setForm({ ...form, balance: e.target.value })}
-              />
-            </label>
-            <label className="booking-field">
-              Payment date
-              <input
-                type="date"
-                value={form.paymentDate}
-                onChange={(e) => setForm({ ...form, paymentDate: e.target.value })}
-              />
-            </label>
-
-            {editingMeta && (
-              <p className="booking-meta">
-                Created by {editingMeta.createdBy || '—'} on {formatMetaDate(editingMeta.createdDate)}
-                <br />
-                Last updated by {editingMeta.updatedBy || '—'} on {formatMetaDate(editingMeta.updatedDate)}
-              </p>
-            )}
+              <h5>Payment{paymentLocked && ' · 🔒 locked (fully paid)'}</h5>
+              {formMode !== 'edit' && (
+                <label className="booking-field booking-field-full">
+                  Advance payment *
+                  <input
+                    type="number"
+                    required
+                    value={form.advancePayment}
+                    onChange={(e) => setForm({ ...form, advancePayment: e.target.value })}
+                  />
+                </label>
+              )}
+              <label className="booking-field">
+                Balance
+                <input
+                  type="number"
+                  disabled={paymentLocked}
+                  value={form.balance}
+                  onChange={(e) => setForm({ ...form, balance: e.target.value })}
+                />
+              </label>
+              <label className="booking-checkbox-field">
+                <input
+                  type="checkbox"
+                  disabled={paymentLocked}
+                  checked={form.fullyPaid}
+                  onChange={(e) => setForm({
+                    ...form,
+                    fullyPaid: e.target.checked,
+                    balance: e.target.checked ? '0' : form.balance
+                  })}
+                />
+                Fully paid
+              </label>
+              <label className="booking-field booking-field-full">
+                Payment date
+                <input
+                  type="date"
+                  disabled={paymentLocked}
+                  value={form.paymentDate}
+                  onChange={(e) => setForm({ ...form, paymentDate: e.target.value })}
+                />
+              </label>
+            </div>
 
             <div className="team-actions">
               <button type="submit" className="booking-save-btn">Save</button>
-              {formMode === 'edit' && <button type="button" onClick={cancelBooking}>Cancel Booking</button>}
+              {formMode === 'edit' && (
+                <button type="button" className="booking-cancel-btn" onClick={cancelBooking}>Cancel Booking</button>
+              )}
             </div>
           </form>
         </div>
