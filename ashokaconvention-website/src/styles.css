@@ -67,14 +67,96 @@ main{flex:1}
 .bc-link:hover{background:#f1f5f9;color:#0f172a;border-left-color:var(--accent)}
 .bc-link.active{color:var(--accent);font-weight:700;border-left-color:var(--accent);background:#f0fafa}
 
+/* Role-specific items (Calendar/Staff/Admin/Welcome) - available because of the account's role */
+.nav-role-items{border-top:1px solid #eef1f4}
+.bc-link-role{font-weight:600;color:var(--accent-2)}
+.bc-link-role:hover{background:#f1f5f9;color:var(--accent-2);border-left-color:var(--accent-2)}
+.bc-link-role.active{color:var(--accent-2);border-left-color:var(--accent-2);background:#f0f0ff}
+
 /* ── Auth ── */
-.nav-auth{padding:12px 20px;border-top:1px solid #eef1f4}
+.nav-auth{padding:12px 20px;border-bottom:1px solid #eef1f4}
 .nav-auth-user{display:flex;flex-direction:column;gap:6px;font-size:0.9rem;color:#334155}
 .nav-auth-user .bc-link{padding:6px 0;width:auto}
 .google-signin-missing{font-size:0.8rem;color:#94a3b8;font-style:italic}
 
 /* ── Admin panel ── */
-.admin-panel{max-width:720px;margin:60px auto;padding:0 24px}
+.admin-panel{max-width:900px;margin:140px auto 60px;padding:0 24px}
+.admin-divider{border:none;border-top:1px solid #eef1f4;margin:48px 0 24px}
+.guests-list p{color:#64748b;font-size:0.9rem}
+
+.team-error{color:#b91c1c;background:#fef2f2;border-radius:6px;padding:10px 14px;margin:16px 0}
+
+.team-form{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0;align-items:center}
+.team-form input,.team-form select{
+  padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem;
+}
+.team-form button{
+  padding:8px 18px;border:none;border-radius:6px;background:var(--accent);
+  color:white;font-weight:600;cursor:pointer;
+}
+
+.team-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:0.9rem}
+.team-table th,.team-table td{padding:10px 12px;text-align:left;border-bottom:1px solid #eef1f4}
+.team-table th{color:#64748b;font-weight:600;font-size:0.8rem;text-transform:uppercase}
+.team-actions{display:flex;gap:8px;white-space:nowrap}
+.team-actions button{
+  padding:5px 12px;border:1px solid #d1d5db;border-radius:6px;background:white;
+  cursor:pointer;font-size:0.85rem;
+}
+.team-actions button:hover{background:#f1f5f9}
+.booking-save-btn{background:var(--accent);border-color:var(--accent);color:white}
+.booking-save-btn:hover{background:#0c8a89;border-color:#0c8a89;color:white}
+
+/* ── Booking calendar ── */
+.booking-panel{max-width:1100px}
+.booking-calendar-wrap{margin-top:16px}
+.booking-calendar-wrap .rbc-event{background-color:var(--accent);border-color:var(--accent)}
+.booking-calendar-wrap .rbc-event.rbc-event-incomplete{background-color:#d97706;border-color:#d97706}
+.booking-calendar-wrap .rbc-today{background-color:#f0fafa}
+.booking-incomplete-warning{
+  background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:8px;
+  padding:10px 12px;font-size:0.85rem;margin:0;
+}
+.booking-modal-overlay{
+  position:fixed;inset:0;z-index:1000;
+  background:rgba(15,23,42,0.55);
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;overflow-y:auto;
+}
+.booking-modal{
+  position:relative;flex-direction:column;align-items:stretch;
+  width:100%;max-width:420px;background:white;
+  border-radius:12px;padding:28px 24px 24px;
+  box-shadow:0 24px 64px rgba(15,23,42,0.35);
+  max-height:calc(100vh - 40px);overflow-y:auto;overscroll-behavior:contain;
+}
+.booking-modal h4{margin:0 0 4px}
+.booking-modal h5{margin:12px 0 -4px;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.04em;color:#94a3b8}
+.booking-field{
+  display:flex;flex-direction:column;gap:4px;
+  font-size:0.78rem;font-weight:600;color:#64748b;
+}
+.booking-meta{
+  margin:12px 0 0;padding-top:12px;border-top:1px solid #eef1f4;
+  font-size:0.78rem;color:#94a3b8;line-height:1.6;
+}
+.booking-modal-close{
+  position:absolute;top:12px;right:12px;
+  background:none;border:none;cursor:pointer;
+  width:28px;height:28px;border-radius:50%;
+  font-size:0.9rem;color:#64748b;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.15s;
+}
+.booking-modal-close:hover{background:#f1f5f9;color:#0f172a}
+
+/* ── Guest landing ── */
+.guest-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}
+.guest-link-btn{
+  padding:10px 20px;border:1px solid var(--accent);border-radius:6px;
+  background:white;color:var(--accent);font-weight:600;cursor:pointer;
+}
+.guest-link-btn:hover{background:var(--accent);color:white}
 
 /* ── Hero ── */
 .hero{position:relative;color:white;overflow:hidden;display:block;background:#0f172a;height:62vw;min-height:280px}

@@ -9,3 +9,7 @@ public/
 
 # Downloaded OAuth credentials
 client_secret_*.json
+
+# Downloaded service account keys (Google Cloud Console's default naming:
+# <project-id>-<key-id>.json)
+ashokaconvention-*.json

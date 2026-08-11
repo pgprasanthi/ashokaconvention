@@ -1,31 +1,29 @@
 import { Router } from 'express'
 import jwt from 'jsonwebtoken'
 import { OAuth2Client } from 'google-auth-library'
+import { getRole } from './team.js'
+import { recordGuestSignIn } from './guests.js'
 
-const {
-  GOOGLE_CLIENT_ID,
-  ADMIN_EMAILS = '',
-  SESSION_SECRET
-} = process.env
+const { GOOGLE_CLIENT_ID, SESSION_SECRET } = process.env
 
 if (!GOOGLE_CLIENT_ID || !SESSION_SECRET) {
   throw new Error('GOOGLE_CLIENT_ID and SESSION_SECRET must be set (see server/.env.example)')
 }
 
-const adminEmails = new Set(
-  ADMIN_EMAILS.split(',').map((email) => email.trim().toLowerCase()).filter(Boolean)
-)
-
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID)
 const SESSION_COOKIE = 'session'
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+const isProduction = process.env.NODE_ENV === 'production'
 
 function issueSessionCookie(res, payload) {
   const token = jwt.sign(payload, SESSION_SECRET, { expiresIn: '7d' })
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProduction,
+    // Frontend and backend live on different Render subdomains in production,
+    // so the cookie needs sameSite: 'none' to be sent cross-site at all.
+    sameSite: isProduction ? 'none' : 'lax',
     maxAge: SESSION_MAX_AGE_MS
   })
 }
@@ -42,9 +40,14 @@ export function requireAuth(req, res, next) {
   }
 }
 
-export function requireAdmin(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
-  next()
+// requireRole('admin') / requireRole('admin', 'staff') etc.
+export function requireRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Not allowed' })
+    }
+    next()
+  }
 }
 
 export const authRouter = Router()
@@ -72,8 +75,16 @@ authRouter.post('/google', async (req, res) => {
   }
 
   const email = payload.email.toLowerCase()
-  const role = adminEmails.has(email) ? 'admin' : 'guest'
+  const role = await getRole(email)
   const user = { email, name: payload.name, picture: payload.picture, role }
+
+  if (role === 'guest') {
+    try {
+      await recordGuestSignIn({ email, name: payload.name })
+    } catch (err) {
+      console.error('Failed to record guest sign-in:', err.message)
+    }
+  }
 
   issueSessionCookie(res, user)
   res.json(user)

@@ -6,7 +6,6 @@ const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
     try {
@@ -14,8 +13,6 @@ export function AuthProvider({ children }) {
       setUser(res.ok ? await res.json() : null)
     } catch {
       setUser(null)
-    } finally {
-      setLoading(false)
     }
   }, [])
 
@@ -44,7 +41,7 @@ export function AuthProvider({ children }) {
     user,
     role: user?.role ?? null,
     isAdmin: user?.role === 'admin',
-    loading,
+    isStaff: user?.role === 'staff',
     loginWithGoogle,
     logout
   }

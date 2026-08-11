@@ -7,7 +7,7 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const dropdownRef = useRef(null)
   const hamburgerRef = useRef(null)
-  const { user, isAdmin, logout } = useAuth()
+  const { user, role, isAdmin, isStaff, logout } = useAuth()
 
   const navItems = [
     { id: 'home',     label: 'Home' },
@@ -15,7 +15,14 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
     { id: 'gallery',  label: 'Gallery' },
     { id: 'feedback', label: 'Feedback' },
     { id: 'partners', label: 'Partners' },
-    { id: 'contact',  label: 'Contact' },
+    { id: 'contact',  label: 'Contact' }
+  ]
+
+  // Items available specifically because of the signed-in user's role
+  const roleItems = [
+    ...(role === 'guest' ? [{ id: 'welcome', label: 'Welcome' }] : []),
+    ...(user ? [{ id: 'bookings', label: 'Calendar' }] : []),
+    ...(isStaff ? [{ id: 'staff', label: 'Staff' }] : []),
     ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : [])
   ]
 
@@ -57,6 +64,17 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
 
       {/* Dropdown menu */}
       <div ref={dropdownRef} className={`nav-dropdown${menuOpen ? ' visible' : ''}`}>
+        <div className="nav-auth">
+          {user ? (
+            <span className="nav-auth-user">
+              {user.name || user.email} ({user.role})
+              <button className="bc-link" onClick={logout}>Sign out</button>
+            </span>
+          ) : (
+            <GoogleSignInButton />
+          )}
+        </div>
+
         <nav className="nav-breadcrumb">
           {navItems.map((item) => (
             <span key={item.id} className="bc-item">
@@ -70,16 +88,20 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
           ))}
         </nav>
 
-        <div className="nav-auth">
-          {user ? (
-            <span className="nav-auth-user">
-              {user.name || user.email} ({user.role})
-              <button className="bc-link" onClick={logout}>Sign out</button>
-            </span>
-          ) : (
-            <GoogleSignInButton />
-          )}
-        </div>
+        {roleItems.length > 0 && (
+          <nav className="nav-breadcrumb nav-role-items">
+            {roleItems.map((item) => (
+              <span key={item.id} className="bc-item">
+                <button
+                  className={`bc-link bc-link-role${currentPage === item.id ? ' active' : ''}`}
+                  onClick={() => handleNav(item.id)}
+                >
+                  {item.label}
+                </button>
+              </span>
+            ))}
+          </nav>
+        )}
       </div>
     </>
   )

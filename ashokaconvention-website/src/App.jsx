@@ -11,13 +11,16 @@ import Feedback from './components/Feedback'
 import Partners from './components/Partners'
 import Footer from './components/Footer'
 import AdminPanel from './components/AdminPanel'
+import StaffPage from './components/StaffPage'
+import GuestLanding from './components/GuestLanding'
+import BookingsCalendar from './components/BookingsCalendar'
 import { useAuth } from './context/AuthContext'
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home')
   const [headerScrolled, setHeaderScrolled] = useState(false)
   const [videoOpen, setVideoOpen] = useState(false)
-  const { isAdmin } = useAuth()
+  const { user, role, isAdmin, isStaff } = useAuth()
 
   useEffect(() => {
     const onScroll = () => setHeaderScrolled(window.scrollY > 60)
@@ -33,12 +36,19 @@ export default function App() {
     }, 50)
   }
 
+  const NO_HERO_PAGES = ['bookings', 'staff', 'admin']
+  const showHero = !NO_HERO_PAGES.includes(currentPage)
+
   return (
     <div className="app">
-      <Header onPageChange={handlePageChange} currentPage={currentPage} scrolled={headerScrolled} />
+      <Header onPageChange={handlePageChange} currentPage={currentPage} scrolled={headerScrolled || !showHero} />
       <main>
-        <Hero />
-        <HeroCards />
+        {showHero && (
+          <>
+            <Hero />
+            <HeroCards />
+          </>
+        )}
         <div id="page-content">
           {currentPage === 'home' && <Home />}
           {currentPage === 'services' && <Services />}
@@ -46,6 +56,9 @@ export default function App() {
           {currentPage === 'contact' && <Contact />}
           {currentPage === 'feedback' && <Feedback />}
           {currentPage === 'partners' && <Partners />}
+          {currentPage === 'welcome' && role === 'guest' && <GuestLanding onNavigate={handlePageChange} />}
+          {currentPage === 'bookings' && user && <BookingsCalendar />}
+          {currentPage === 'staff' && isStaff && <StaffPage />}
           {currentPage === 'admin' && isAdmin && <AdminPanel />}
         </div>
       </main>
