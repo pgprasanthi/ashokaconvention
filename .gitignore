@@ -13,3 +13,7 @@ client_secret_*.json
 # Downloaded service account keys (Google Cloud Console's default naming:
 # <project-id>-<key-id>.json)
 ashokaconvention-*.json
+
+# Facebook data export downloads
+facebook-*.zip
+facebook-*/

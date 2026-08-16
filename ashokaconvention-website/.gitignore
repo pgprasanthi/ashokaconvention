@@ -3,3 +3,4 @@ dist
 .env
 public/
 credentials/
+WHATSAPP_INTEGRATION.md
