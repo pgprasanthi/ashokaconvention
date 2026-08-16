@@ -101,6 +101,19 @@ whatsappRouter.post('/', (req, res) => {
     expectedSignature,
     rawBodyLength: req.rawBody?.length
   })
+  // Logged even when the signature is invalid, unlike the later body log
+  // further down - here we just need to see the SHAPE (top-level keys, and
+  // one level into entry/changes) to tell apart "this is Meta's real payload
+  // structure, just re-serialized" from "this is some other format Dualhook
+  // invented." Deliberately not dumping full message content/phone numbers.
+  console.log('WhatsApp webhook body shape:', {
+    topLevelKeys: Object.keys(req.body || {}),
+    object: req.body?.object,
+    entryCount: req.body?.entry?.length,
+    firstEntryKeys: req.body?.entry?.[0] ? Object.keys(req.body.entry[0]) : undefined,
+    firstChangeField: req.body?.entry?.[0]?.changes?.[0]?.field,
+    firstChangeValueKeys: req.body?.entry?.[0]?.changes?.[0]?.value ? Object.keys(req.body.entry[0].changes[0].value) : undefined
+  })
 
   if (!isValidSignature(req)) return res.sendStatus(401)
   res.sendStatus(200)
