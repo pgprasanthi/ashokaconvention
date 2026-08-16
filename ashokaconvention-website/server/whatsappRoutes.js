@@ -85,9 +85,22 @@ whatsappRouter.post('/', (req, res) => {
   // Temporary diagnostic: logs every POST that reaches this route, even ones
   // that fail signature verification below - a failed-signature request
   // previously returned 401 with zero log output, indistinguishable from a
-  // request that never arrived at all. Remove once the Dualhook connection
-  // issue is confirmed resolved.
-  console.log('WhatsApp webhook POST received. Has signature header:', Boolean(req.get('X-Hub-Signature-256')), 'Signature valid:', isValidSignature(req))
+  // request that never arrived at all. Also logs enough detail to tell apart
+  // "wrong signing scheme" from "right scheme, body bytes changed in transit"
+  // (a proxy re-serializing JSON breaks Meta's original signature even if it
+  // doesn't touch the actual message content). Remove once the Dualhook
+  // connection issue is confirmed resolved.
+  const receivedSignature = req.get('X-Hub-Signature-256') || ''
+  const expectedSignature = req.rawBody
+    ? 'sha256=' + crypto.createHmac('sha256', WHATSAPP_APP_SECRET).update(req.rawBody).digest('hex')
+    : '(no rawBody captured)'
+  console.log('WhatsApp webhook POST received.', {
+    hasSignatureHeader: Boolean(receivedSignature),
+    signatureValid: isValidSignature(req),
+    receivedSignature,
+    expectedSignature,
+    rawBodyLength: req.rawBody?.length
+  })
 
   if (!isValidSignature(req)) return res.sendStatus(401)
   res.sendStatus(200)
