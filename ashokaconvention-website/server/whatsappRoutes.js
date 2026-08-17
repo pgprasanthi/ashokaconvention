@@ -84,6 +84,19 @@ function extractMessages(body) {
 // acknowledgment, so respond immediately and do the Sheets write afterward
 // rather than making Meta wait on it.
 whatsappRouter.post('/', (req, res) => {
+  // Temporary diagnostic: logs every POST that reaches this route, even ones
+  // rejected below - a rejected request previously returned 403 with zero
+  // log output, indistinguishable from a request that never arrived at all.
+  // Remove once real messages are confirmed landing on the Leads sheet.
+  console.log('WhatsApp webhook POST received.', {
+    object: req.body?.object,
+    entryWabaId: req.body?.entry?.[0]?.id,
+    expectedWabaId: WHATSAPP_WABA_ID,
+    changePhoneNumberId: req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id,
+    expectedPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+    accepted: isFromExpectedAccount(req.body)
+  })
+
   if (!isFromExpectedAccount(req.body)) return res.sendStatus(403)
   res.sendStatus(200)
 
