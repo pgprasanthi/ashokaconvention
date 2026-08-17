@@ -1,11 +1,10 @@
 import { Router } from 'express'
-import crypto from 'crypto'
 import { recordLead, recordOutboundMessage } from './whatsappLeads.js'
 
-const { WHATSAPP_WEBHOOK_VERIFY_TOKEN, WHATSAPP_APP_SECRET } = process.env
+const { WHATSAPP_WEBHOOK_VERIFY_TOKEN, WHATSAPP_WABA_ID, WHATSAPP_PHONE_NUMBER_ID } = process.env
 
-if (!WHATSAPP_WEBHOOK_VERIFY_TOKEN || !WHATSAPP_APP_SECRET) {
-  throw new Error('WHATSAPP_WEBHOOK_VERIFY_TOKEN and WHATSAPP_APP_SECRET must be set (see server/.env.example)')
+if (!WHATSAPP_WEBHOOK_VERIFY_TOKEN || !WHATSAPP_WABA_ID || !WHATSAPP_PHONE_NUMBER_ID) {
+  throw new Error('WHATSAPP_WEBHOOK_VERIFY_TOKEN, WHATSAPP_WABA_ID, and WHATSAPP_PHONE_NUMBER_ID must be set (see server/.env.example)')
 }
 
 export const whatsappRouter = Router()
@@ -24,25 +23,28 @@ whatsappRouter.get('/', (req, res) => {
   res.sendStatus(403)
 })
 
-// Meta signs every webhook POST body with your app secret - verifying this
-// stops anyone else from sending fake messages to this public endpoint.
-function isValidSignature(req) {
-  const signature = req.get('X-Hub-Signature-256')
-  if (!signature || !req.rawBody) return false
-  const expected = 'sha256=' + crypto.createHmac('sha256', WHATSAPP_APP_SECRET).update(req.rawBody).digest('hex')
-  try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
-  } catch {
-    return false
-  }
+// Real messages arrive via Dualhook's Embedded Signup flow, which delivers
+// them straight from Meta - but signed with DUALHOOK'S Meta App secret, not
+// ours, so HMAC signature verification (X-Hub-Signature-256) can never pass
+// here. Confirmed with Dualhook support. The substitute protection is this
+// route's confidential URL path (see index.js) plus checking the payload
+// actually names our WABA and phone number, so a request that merely finds
+// the URL still can't spoof data for our account without also knowing both
+// IDs (which aren't secret, but narrow things down further than nothing).
+function isFromExpectedAccount(body) {
+  if (body?.object !== 'whatsapp_business_account') return false
+  return (body.entry || []).some((entry) =>
+    entry.id === WHATSAPP_WABA_ID &&
+    (entry.changes || []).some((change) => change.value?.metadata?.phone_number_id === WHATSAPP_PHONE_NUMBER_ID)
+  )
 }
 
 // Outbound replies staff send from the WhatsApp Business app (Coexistence
 // mode) are delivered back to the webhook as "echo" events, separate from
 // inbound customer messages. NOTE: the exact field name/shape here is a
 // best guess based on available docs ("smb_message_echoes") - this hasn't
-// been verified against a real payload yet since the Meta connection isn't
-// live. May need adjusting once real echo events are seen.
+// been verified against a real payload yet. May need adjusting once real
+// echo events are seen.
 function extractOutboundEchoes(body) {
   const out = []
   for (const entry of body?.entry || []) {
@@ -82,49 +84,19 @@ function extractMessages(body) {
 // acknowledgment, so respond immediately and do the Sheets write afterward
 // rather than making Meta wait on it.
 whatsappRouter.post('/', (req, res) => {
-  // Temporary diagnostic: logs every POST that reaches this route, even ones
-  // that fail signature verification below - a failed-signature request
-  // previously returned 401 with zero log output, indistinguishable from a
-  // request that never arrived at all. Also logs enough detail to tell apart
-  // "wrong signing scheme" from "right scheme, body bytes changed in transit"
-  // (a proxy re-serializing JSON breaks Meta's original signature even if it
-  // doesn't touch the actual message content). Remove once the Dualhook
-  // connection issue is confirmed resolved.
-  const receivedSignature = req.get('X-Hub-Signature-256') || ''
-  const expectedSignature = req.rawBody
-    ? 'sha256=' + crypto.createHmac('sha256', WHATSAPP_APP_SECRET).update(req.rawBody).digest('hex')
-    : '(no rawBody captured)'
-  console.log('WhatsApp webhook POST received.', {
-    hasSignatureHeader: Boolean(receivedSignature),
-    signatureValid: isValidSignature(req),
-    receivedSignature,
-    expectedSignature,
-    rawBodyLength: req.rawBody?.length
-  })
-  // Logged even when the signature is invalid, unlike the later body log
-  // further down - here we just need to see the SHAPE (top-level keys, and
-  // one level into entry/changes) to tell apart "this is Meta's real payload
-  // structure, just re-serialized" from "this is some other format Dualhook
-  // invented." Deliberately not dumping full message content/phone numbers.
-  console.log('WhatsApp webhook body shape:', {
-    topLevelKeys: Object.keys(req.body || {}),
-    object: req.body?.object,
-    entryCount: req.body?.entry?.length,
-    firstEntryKeys: req.body?.entry?.[0] ? Object.keys(req.body.entry[0]) : undefined,
-    firstChangeField: req.body?.entry?.[0]?.changes?.[0]?.field,
-    firstChangeValueKeys: req.body?.entry?.[0]?.changes?.[0]?.value ? Object.keys(req.body.entry[0].changes[0].value) : undefined
-  })
-
-  if (!isValidSignature(req)) return res.sendStatus(401)
+  if (!isFromExpectedAccount(req.body)) return res.sendStatus(403)
   res.sendStatus(200)
 
-  console.log('WhatsApp webhook event:', JSON.stringify(req.body, null, 2))
-  for (const { phone, name, adSource } of extractMessages(req.body)) {
+  const messages = extractMessages(req.body)
+  const echoes = extractOutboundEchoes(req.body)
+  console.log(`WhatsApp webhook: ${messages.length} inbound message(s), ${echoes.length} outbound echo(es)`)
+
+  for (const { phone, name, adSource } of messages) {
     recordLead({ phone, name, adSource }).catch((err) => {
       console.error('Failed to record WhatsApp lead:', err.message)
     })
   }
-  for (const { phone } of extractOutboundEchoes(req.body)) {
+  for (const { phone } of echoes) {
     recordOutboundMessage(phone).catch((err) => {
       console.error('Failed to record outbound WhatsApp message:', err.message)
     })
