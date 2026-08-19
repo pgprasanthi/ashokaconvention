@@ -43,10 +43,23 @@ what Render builds from git. Use Render's **Secret Files** instead:
 
 ## 5. Update the frontend
 
-- In the frontend's Render Static Site settings, set `VITE_API_URL` to the
-  backend service's Render URL (e.g. `https://ashokaconvention-api.onrender.com`)
-- Trigger a redeploy/rebuild of the frontend so the new value gets baked in
-  (Vite env vars are resolved at build time, not runtime)
+The frontend and backend are on different Render domains, which makes the
+session cookie a third-party cookie from the browser's perspective - modern
+browsers (Safari for years, Chrome increasingly) block those by default
+regardless of `sameSite`/`secure` settings. The fix is to make API calls look
+same-origin by proxying them through the frontend's own domain:
+
+- In the frontend's Render Static Site settings -> **Redirects/Rewrites**,
+  add a **Rewrite** rule (not Redirect):
+  - Source: `/api/*`
+  - Destination: `https://<backend-service>.onrender.com/api/*`
+- **Do NOT set `VITE_API_URL`** on the Static Site (remove it if it's set
+  from a previous deploy) - the frontend code defaults to relative paths
+  (`/api/...`) in production builds specifically so these hit the Rewrite
+  rule above and stay same-origin. Setting `VITE_API_URL` would bypass the
+  proxy and bring back the third-party-cookie problem.
+- Trigger a redeploy/rebuild of the frontend after either change (Vite env
+  vars are resolved at build time, not runtime)
 
 ## 6. Update Google Cloud Console
 
@@ -64,8 +77,9 @@ what Render builds from git. Use Render's **Secret Files** instead:
 These were fixed ahead of time so deployment doesn't need further changes:
 
 - Session cookie uses `sameSite: 'none'` + `secure: true` in production
-  (`server/auth.js`), required since frontend and backend are on different
-  subdomains
+  (`server/auth.js`) - harmless either way once the Rewrite proxy above makes
+  requests same-origin, but kept permissive in case anything ever calls the
+  backend's Render URL directly (e.g. local dev against the deployed backend)
 - `app.set('trust proxy', 1)` (`server/index.js`), required because Render
   terminates HTTPS in front of the app
 - `server/package.json` has a `start` script matching Render's convention

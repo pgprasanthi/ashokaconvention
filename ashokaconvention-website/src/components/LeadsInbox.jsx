@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
+// Relative path in production - see AuthContext.jsx for why (same-origin
+// cookie via Render's rewrite proxy, avoids third-party cookie blocking).
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')
 
 const LOST_REASONS = [
   'Budget mismatch',

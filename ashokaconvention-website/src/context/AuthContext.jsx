@@ -1,6 +1,11 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
+// Empty string in production builds means every fetch uses a relative path
+// (e.g. "/api/bookings"), which Render's rewrite rule proxies through to the
+// backend under the SAME origin as the frontend - the session cookie is then
+// a first-party cookie from the browser's perspective, not a cross-site one
+// that third-party-cookie blocking would silently reject.
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')
 
 const AuthContext = createContext(null)
 

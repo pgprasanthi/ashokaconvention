@@ -5,7 +5,9 @@ import { enUS } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { useAuth } from '../context/AuthContext'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
+// Relative path in production - see AuthContext.jsx for why (same-origin
+// cookie via Render's rewrite proxy, avoids third-party cookie blocking).
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')
 const HALLS = ['Ashok Palace', 'Convention Center', 'Banquet Hall']
 const EMPTY_FORM = {
   title: '', description: '', start: '', end: '', hall: '',
