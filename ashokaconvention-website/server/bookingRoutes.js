@@ -2,14 +2,18 @@ import { Router } from 'express'
 import { requireAuth, requireRole } from './auth.js'
 import { listBookings, createBooking, updateBooking, deleteBooking } from './bookings.js'
 import { listEvents, createEvent, updateEvent, deleteEvent } from './events.js'
+import { HALLS } from './halls.js'
 
 export const bookingRouter = Router()
 bookingRouter.use(requireAuth)
 
-function missingRequiredFields({ title, start, end, customerName, customerMobile, advancePayment }) {
+function missingRequiredFields({ title, start, end, customerName, customerMobile, advancePayment, hall }) {
   const isBlank = (v) => v === undefined || v === null || v === ''
-  if (isBlank(title) || isBlank(start) || isBlank(end) || isBlank(customerName) || isBlank(customerMobile) || isBlank(advancePayment)) {
-    return 'title, start, end, customer name, customer mobile, and advance payment are required'
+  if (isBlank(title) || isBlank(start) || isBlank(end) || isBlank(customerName) || isBlank(customerMobile) || isBlank(advancePayment) || isBlank(hall)) {
+    return 'title, start, end, customer name, customer mobile, advance payment, and hall are required'
+  }
+  if (!HALLS.includes(hall)) {
+    return `hall must be one of: ${HALLS.join(', ')}`
   }
   return null
 }
@@ -17,9 +21,10 @@ function missingRequiredFields({ title, start, end, customerName, customerMobile
 bookingRouter.get('/', async (req, res) => {
   const bookings = await listBookings()
 
-  // Guests only see that a slot is taken, never who/what it's for.
+  // Guests only see that a slot is taken, never who/what it's for - but the
+  // hall is fine to show, since it just helps them see which halls are free.
   if (req.user.role === 'guest') {
-    return res.json(bookings.map((b) => ({ id: b.id, start: b.start, end: b.end, title: 'Blocked' })))
+    return res.json(bookings.map((b) => ({ id: b.id, start: b.start, end: b.end, title: 'Blocked', hall: b.hall })))
   }
 
   const events = await listEvents()
@@ -33,11 +38,11 @@ bookingRouter.get('/', async (req, res) => {
 })
 
 bookingRouter.post('/', requireRole('admin', 'staff'), async (req, res) => {
-  const { title, start, end, description, customerName, customerEmail, customerMobile, advancePayment, balance, paymentDate, fullyPaid } = req.body
-  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, advancePayment })
+  const { title, start, end, description, customerName, customerEmail, customerMobile, advancePayment, balance, paymentDate, fullyPaid, hall } = req.body
+  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, advancePayment, hall })
   if (error) return res.status(400).json({ error })
   try {
-    const booking = await createBooking({ title, description: description || '', start, end })
+    const booking = await createBooking({ title, description: description || '', start, end, hall })
     const event = await createEvent({
       eventId: booking.id,
       bookingDate: start.slice(0, 10),
@@ -48,6 +53,7 @@ bookingRouter.post('/', requireRole('admin', 'staff'), async (req, res) => {
       customerEmail,
       customerMobile,
       fullyPaid,
+      hall,
       actor: req.user.email
     })
     res.status(201).json({ ...booking, ...event })
@@ -57,11 +63,11 @@ bookingRouter.post('/', requireRole('admin', 'staff'), async (req, res) => {
 })
 
 bookingRouter.put('/:id', requireRole('admin', 'staff'), async (req, res) => {
-  const { title, start, end, description, customerName, customerEmail, customerMobile, advancePayment, balance, paymentDate, fullyPaid } = req.body
-  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, advancePayment })
+  const { title, start, end, description, customerName, customerEmail, customerMobile, advancePayment, balance, paymentDate, fullyPaid, hall } = req.body
+  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, advancePayment, hall })
   if (error) return res.status(400).json({ error })
   try {
-    const booking = await updateBooking(req.params.id, { title, description: description || '', start, end })
+    const booking = await updateBooking(req.params.id, { title, description: description || '', start, end, hall })
     const event = await updateEvent(req.params.id, {
       bookingDate: start.slice(0, 10),
       advancePayment,
@@ -71,6 +77,7 @@ bookingRouter.put('/:id', requireRole('admin', 'staff'), async (req, res) => {
       customerEmail,
       customerMobile,
       fullyPaid,
+      hall,
       actor: req.user.email
     })
     res.json({ ...booking, ...event })

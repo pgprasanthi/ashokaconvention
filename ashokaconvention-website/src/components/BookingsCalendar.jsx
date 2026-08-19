@@ -6,8 +6,9 @@ import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { useAuth } from '../context/AuthContext'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
+const HALLS = ['Ashok Palace', 'Convention Center', 'Banquet Hall']
 const EMPTY_FORM = {
-  title: '', description: '', start: '', end: '',
+  title: '', description: '', start: '', end: '', hall: '',
   customerName: '', customerEmail: '', customerMobile: '',
   advancePayment: '', balance: '', paymentDate: '', fullyPaid: false
 }
@@ -38,6 +39,7 @@ export default function BookingsCalendar() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [editingIncomplete, setEditingIncomplete] = useState(false)
   const [paymentLocked, setPaymentLocked] = useState(false)
+  const [hallFilter, setHallFilter] = useState('all')
   const modalRef = useRef(null)
 
   // While the modal is open: lock background scroll and keep keyboard focus
@@ -86,17 +88,20 @@ export default function BookingsCalendar() {
 
   useEffect(() => { load() }, [load])
 
-  const events = useMemo(() => bookings.map((b) => {
-    const incomplete = canEdit && b.hasDetails === false
-    return {
-      id: b.id,
-      title: incomplete ? `⚠ ${b.title}` : b.title,
-      start: new Date(b.start),
-      end: new Date(b.end),
-      resource: b,
-      incomplete
-    }
-  }), [bookings, canEdit])
+  const events = useMemo(() => bookings
+    .filter((b) => hallFilter === 'all' || b.hall === hallFilter)
+    .map((b) => {
+      const incomplete = canEdit && b.hasDetails === false
+      const label = b.hall ? `${b.hall} — ${b.title}` : b.title
+      return {
+        id: b.id,
+        title: incomplete ? `⚠ ${label}` : label,
+        start: new Date(b.start),
+        end: new Date(b.end),
+        resource: b,
+        incomplete
+      }
+    }), [bookings, canEdit, hallFilter])
 
   const eventPropGetter = (event) => (
     event.incomplete ? { className: 'rbc-event-incomplete' } : {}
@@ -106,7 +111,12 @@ export default function BookingsCalendar() {
     if (!canEdit) return
     setFormMode('add')
     setEditingId(null)
-    setForm({ ...EMPTY_FORM, start: toLocalInput(slotInfo.start), end: toLocalInput(slotInfo.end) })
+    setForm({
+      ...EMPTY_FORM,
+      start: toLocalInput(slotInfo.start),
+      end: toLocalInput(slotInfo.end),
+      hall: hallFilter === 'all' ? '' : hallFilter
+    })
   }
 
   const openEditForm = (event) => {
@@ -121,6 +131,7 @@ export default function BookingsCalendar() {
       description: b.description,
       start: toLocalInput(event.start),
       end: toLocalInput(event.end),
+      hall: b.hall || '',
       customerName: b.customerName || '',
       customerEmail: b.customerEmail || '',
       customerMobile: b.customerMobile || '',
@@ -147,6 +158,7 @@ export default function BookingsCalendar() {
       description: form.description,
       start: new Date(form.start).toISOString(),
       end: new Date(form.end).toISOString(),
+      hall: form.hall,
       customerName: form.customerName,
       customerEmail: form.customerEmail,
       customerMobile: form.customerMobile,
@@ -192,6 +204,14 @@ export default function BookingsCalendar() {
 
       {error && <p className="team-error">{error}</p>}
 
+      <label className="booking-hall-filter">
+        Hall
+        <select value={hallFilter} onChange={(e) => setHallFilter(e.target.value)}>
+          <option value="all">All Halls</option>
+          {HALLS.map((h) => <option key={h} value={h}>{h}</option>)}
+        </select>
+      </label>
+
       {loading ? (
         <p>Loading bookings…</p>
       ) : (
@@ -231,6 +251,17 @@ export default function BookingsCalendar() {
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
+              </label>
+              <label className="booking-field booking-field-full">
+                Hall *
+                <select
+                  required
+                  value={form.hall}
+                  onChange={(e) => setForm({ ...form, hall: e.target.value })}
+                >
+                  <option value="" disabled>— Select hall —</option>
+                  {HALLS.map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
               </label>
               <label className="booking-field">
                 Start *

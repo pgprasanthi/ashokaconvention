@@ -22,8 +22,11 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
   const roleItems = [
     ...(role === 'guest' ? [{ id: 'welcome', label: 'Welcome' }] : []),
     ...(user ? [{ id: 'bookings', label: 'Calendar' }] : []),
+    ...(isAdmin || isStaff ? [{ id: 'leads', label: 'Leads' }] : []),
     ...(isStaff ? [{ id: 'staff', label: 'Staff' }] : []),
-    ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : [])
+    ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : []),
+    ...(isAdmin ? [{ id: 'reports', label: 'Reports' }] : []),
+    ...(isAdmin ? [{ id: 'whatsapp-settings', label: 'WhatsApp Settings' }] : [])
   ]
 
   // Close on outside click

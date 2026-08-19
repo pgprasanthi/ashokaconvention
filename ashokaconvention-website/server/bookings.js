@@ -26,7 +26,13 @@ function toBooking(event) {
     title: event.summary || '',
     description: event.description || '',
     start: event.start?.dateTime || (event.start?.date ? `${event.start.date}T00:00:00` : undefined),
-    end: event.end?.dateTime || (event.end?.date ? `${event.end.date}T00:00:00` : undefined)
+    end: event.end?.dateTime || (event.end?.date ? `${event.end.date}T00:00:00` : undefined),
+    // Which of the three halls this booking is for. Stored as a private
+    // extended property rather than in the title, so it can also be used
+    // to scope conflict checks per hall (see hasConflict below). Events
+    // created outside the app (e.g. a phone's calendar app) won't have
+    // this set - the UI treats that the same as an incomplete booking.
+    hall: event.extendedProperties?.private?.hall || ''
   }
 }
 
@@ -41,37 +47,53 @@ export async function listBookings() {
   return (res.data.items || []).map(toBooking)
 }
 
-async function hasConflict(start, end, excludeId) {
+// Scoped to a single hall - a time slot is only a conflict if that SAME
+// hall already has a booking overlapping it, so the three halls can be
+// booked independently for the same date/time.
+async function hasConflict(start, end, hall, excludeId) {
   const res = await calendar.events.list({
     calendarId: GOOGLE_CALENDAR_ID,
     singleEvents: true,
     timeMin: start,
-    timeMax: end
+    timeMax: end,
+    privateExtendedProperty: [`hall=${hall}`]
   })
   return (res.data.items || []).some((event) => event.id !== excludeId)
 }
 
-function conflictError() {
-  const err = new Error('That time slot is already booked')
+function conflictError(hall) {
+  const err = new Error(`${hall} is already booked for that time slot`)
   err.code = 'CONFLICT'
   return err
 }
 
-export async function createBooking({ title, description, start, end }) {
-  if (await hasConflict(start, end)) throw conflictError()
+export async function createBooking({ title, description, start, end, hall }) {
+  if (await hasConflict(start, end, hall)) throw conflictError(hall)
   const res = await calendar.events.insert({
     calendarId: GOOGLE_CALENDAR_ID,
-    requestBody: { summary: title, description, start: { dateTime: start }, end: { dateTime: end } }
+    requestBody: {
+      summary: title,
+      description,
+      start: { dateTime: start },
+      end: { dateTime: end },
+      extendedProperties: { private: { hall } }
+    }
   })
   return toBooking(res.data)
 }
 
-export async function updateBooking(id, { title, description, start, end }) {
-  if (await hasConflict(start, end, id)) throw conflictError()
+export async function updateBooking(id, { title, description, start, end, hall }) {
+  if (await hasConflict(start, end, hall, id)) throw conflictError(hall)
   const res = await calendar.events.update({
     calendarId: GOOGLE_CALENDAR_ID,
     eventId: id,
-    requestBody: { summary: title, description, start: { dateTime: start }, end: { dateTime: end } }
+    requestBody: {
+      summary: title,
+      description,
+      start: { dateTime: start },
+      end: { dateTime: end },
+      extendedProperties: { private: { hall } }
+    }
   })
   return toBooking(res.data)
 }

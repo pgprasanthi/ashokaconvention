@@ -1,5 +1,7 @@
 import { Router } from 'express'
-import { recordLead, recordOutboundMessage } from './whatsappLeads.js'
+import { recordLead, recordOutboundMessage, shouldSendAwayMessage, markAwaySent, normalizePhone } from './whatsappLeads.js'
+import { getSettings } from './settings.js'
+import { sendWhatsAppMessage } from './whatsappSend.js'
 
 const { WHATSAPP_WEBHOOK_VERIFY_TOKEN, WHATSAPP_WABA_ID, WHATSAPP_PHONE_NUMBER_ID } = process.env
 
@@ -80,23 +82,41 @@ function extractMessages(body) {
   return out
 }
 
-// Actual incoming message/status events land here. Meta expects a fast
-// acknowledgment, so respond immediately and do the Sheets write afterward
-// rather than making Meta wait on it.
-whatsappRouter.post('/', (req, res) => {
-  // Temporary diagnostic: logs every POST that reaches this route, even ones
-  // rejected below - a rejected request previously returned 403 with zero
-  // log output, indistinguishable from a request that never arrived at all.
-  // Remove once real messages are confirmed landing on the Leads sheet.
-  console.log('WhatsApp webhook POST received.', {
-    object: req.body?.object,
-    entryWabaId: req.body?.entry?.[0]?.id,
-    expectedWabaId: WHATSAPP_WABA_ID,
-    changePhoneNumberId: req.body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id,
-    expectedPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
-    accepted: isFromExpectedAccount(req.body)
-  })
+// Two webhook deliveries for the same number arriving close together (e.g. a
+// customer sends two messages in a row) would otherwise race: both read "no
+// existing lead row" before either had written one, both create a row, and
+// both treat the contact as first-time - sending the greeting twice. This
+// queues handling per normalized phone number so only one runs at a time.
+const phoneLocks = new Map()
+function withPhoneLock(phone, fn) {
+  const key = normalizePhone(phone)
+  const prior = phoneLocks.get(key) || Promise.resolve()
+  const next = prior.then(fn, fn)
+  phoneLocks.set(key, next.catch(() => {}))
+  return next
+}
 
+// Handles one inbound message: records the lead, then fires the greeting
+// (first-time contacts only) and/or away message (at most once per cooldown
+// window) if enabled in Settings. Runs after the response is already sent,
+// so a slow Dualhook send call never delays Meta's acknowledgment.
+async function handleInboundMessage({ phone, name, adSource }) {
+  const { isNew } = await recordLead({ phone, name, adSource })
+
+  const settings = await getSettings()
+  if (isNew && settings.whatsapp_greeting_enabled === 'TRUE' && settings.whatsapp_greeting_text) {
+    await sendWhatsAppMessage(phone, settings.whatsapp_greeting_text)
+  }
+  if (settings.whatsapp_away_enabled === 'TRUE' && settings.whatsapp_away_text && await shouldSendAwayMessage(phone)) {
+    await sendWhatsAppMessage(phone, settings.whatsapp_away_text)
+    await markAwaySent(phone)
+  }
+}
+
+// Actual incoming message/status events land here. Meta expects a fast
+// acknowledgment, so respond immediately and do the Sheets write (and any
+// auto-reply sends) afterward rather than making Meta wait on it.
+whatsappRouter.post('/', (req, res) => {
   if (!isFromExpectedAccount(req.body)) return res.sendStatus(403)
   res.sendStatus(200)
 
@@ -104,9 +124,9 @@ whatsappRouter.post('/', (req, res) => {
   const echoes = extractOutboundEchoes(req.body)
   console.log(`WhatsApp webhook: ${messages.length} inbound message(s), ${echoes.length} outbound echo(es)`)
 
-  for (const { phone, name, adSource } of messages) {
-    recordLead({ phone, name, adSource }).catch((err) => {
-      console.error('Failed to record WhatsApp lead:', err.message)
+  for (const message of messages) {
+    withPhoneLock(message.phone, () => handleInboundMessage(message)).catch((err) => {
+      console.error('Failed to process WhatsApp message:', err.message)
     })
   }
   for (const { phone } of echoes) {

@@ -15,8 +15,9 @@ if (!GOOGLE_SHEETS_ID) {
 const HEADER = [
   'Event ID', 'Booking Date', 'Advance Payment', 'Balance', 'Payment Date',
   'Customer Name', 'Customer Email', 'Customer Mobile', 'Fully Paid',
-  'Created By', 'Created Date', 'Updated Date', 'Updated By', 'Deleted'
+  'Created By', 'Created Date', 'Updated Date', 'Updated By', 'Deleted', 'Hall'
 ]
+const LAST_COL = 'O'
 
 const credentials = JSON.parse(readFileSync(GOOGLE_SERVICE_ACCOUNT_KEY_PATH, 'utf-8'))
 const auth = new google.auth.GoogleAuth({
@@ -28,7 +29,11 @@ const sheets = google.sheets({ version: 'v4', auth })
 let tabReady = null
 
 // Creates the Events tab the first time it's needed, so no manual sheet
-// setup is required. Separate from the Team/Guests tabs.
+// setup is required. Also self-heals the header row on every server start:
+// past schema additions (Fully Paid, Deleted) left a stale header behind
+// because it was only ever written on tab creation, which once caused
+// values.append to silently misalign new rows into the wrong columns.
+// Rewriting the header (never the data rows) each time closes that gap.
 async function ensureTab() {
   if (tabReady) return tabReady
   tabReady = (async () => {
@@ -39,9 +44,17 @@ async function ensureTab() {
         spreadsheetId: GOOGLE_SHEETS_ID,
         requestBody: { requests: [{ addSheet: { properties: { title: EVENTS_TAB } } }] }
       })
+    }
+    const { data: headerData } = await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEETS_ID,
+      range: `${EVENTS_TAB}!A1:${LAST_COL}1`
+    })
+    const currentHeader = (headerData.values || [[]])[0]
+    const isCurrent = HEADER.every((col, i) => currentHeader[i] === col)
+    if (!isCurrent) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: GOOGLE_SHEETS_ID,
-        range: `${EVENTS_TAB}!A1:N1`,
+        range: `${EVENTS_TAB}!A1:${LAST_COL}1`,
         valueInputOption: 'RAW',
         requestBody: { values: [HEADER] }
       })
@@ -51,7 +64,7 @@ async function ensureTab() {
 }
 
 function rowToEvent(row, rowNumber) {
-  const [eventId, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, createdBy, createdDate, updatedDate, updatedBy, deleted] = row
+  const [eventId, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, createdBy, createdDate, updatedDate, updatedBy, deleted, hall] = row
   return {
     rowNumber,
     eventId: (eventId || '').trim(),
@@ -67,7 +80,8 @@ function rowToEvent(row, rowNumber) {
     createdDate: createdDate || '',
     updatedDate: updatedDate || '',
     updatedBy: updatedBy || '',
-    deleted: deleted === true || deleted === 'TRUE'
+    deleted: deleted === true || deleted === 'TRUE',
+    hall: hall || ''
   }
 }
 
@@ -75,13 +89,14 @@ function toRow(e) {
   return [
     e.eventId, e.bookingDate, e.advancePayment, e.balance, e.paymentDate,
     e.customerName, e.customerEmail, e.customerMobile, e.fullyPaid ? 'TRUE' : 'FALSE',
-    e.createdBy, e.createdDate, e.updatedDate, e.updatedBy, e.deleted ? 'TRUE' : 'FALSE'
+    e.createdBy, e.createdDate, e.updatedDate, e.updatedBy, e.deleted ? 'TRUE' : 'FALSE',
+    e.hall || ''
   ]
 }
 
 async function fetchEvents() {
   await ensureTab()
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEETS_ID, range: `${EVENTS_TAB}!A2:N` })
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEETS_ID, range: `${EVENTS_TAB}!A2:${LAST_COL}` })
   return (res.data.values || []).map((row, i) => rowToEvent(row, i + 2)).filter((e) => e.eventId)
 }
 
@@ -91,7 +106,7 @@ export async function listEvents() {
 }
 
 // eventId is the linked Google Calendar event id.
-export async function createEvent({ eventId, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, actor }) {
+export async function createEvent({ eventId, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, hall, actor }) {
   const now = new Date().toISOString()
   const event = {
     eventId,
@@ -107,12 +122,13 @@ export async function createEvent({ eventId, bookingDate, advancePayment, balanc
     createdDate: now,
     updatedDate: now,
     updatedBy: actor,
-    deleted: false
+    deleted: false,
+    hall: hall || ''
   }
   await ensureTab()
   await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${EVENTS_TAB}!A2:N`,
+    range: `${EVENTS_TAB}!A2:${LAST_COL}`,
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [toRow(event)] }
@@ -126,7 +142,7 @@ export async function createEvent({ eventId, bookingDate, advancePayment, balanc
 // still update booking/customer details, but payment changes are silently
 // ignored rather than applied, enforced here so it can't be bypassed by
 // calling the API directly.
-export async function updateEvent(eventId, { bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, actor }) {
+export async function updateEvent(eventId, { bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, hall, actor }) {
   const events = await fetchEvents()
   const existing = events.find((e) => e.eventId === eventId)
   if (!existing) throw new Error('Event not found')
@@ -142,12 +158,13 @@ export async function updateEvent(eventId, { bookingDate, advancePayment, balanc
     customerName: customerName ?? existing.customerName,
     customerEmail: customerEmail ?? existing.customerEmail,
     customerMobile: customerMobile ?? existing.customerMobile,
+    hall: hall ?? existing.hall,
     updatedDate: new Date().toISOString(),
     updatedBy: actor
   }
   await sheets.spreadsheets.values.update({
     spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${EVENTS_TAB}!A${existing.rowNumber}:N${existing.rowNumber}`,
+    range: `${EVENTS_TAB}!A${existing.rowNumber}:${LAST_COL}${existing.rowNumber}`,
     valueInputOption: 'RAW',
     requestBody: { values: [toRow(merged)] }
   })
@@ -167,7 +184,7 @@ export async function deleteEvent(eventId, actor) {
   const merged = { ...existing, deleted: true, updatedDate: new Date().toISOString(), updatedBy: actor }
   await sheets.spreadsheets.values.update({
     spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${EVENTS_TAB}!A${existing.rowNumber}:N${existing.rowNumber}`,
+    range: `${EVENTS_TAB}!A${existing.rowNumber}:${LAST_COL}${existing.rowNumber}`,
     valueInputOption: 'RAW',
     requestBody: { values: [toRow(merged)] }
   })

@@ -7,6 +7,9 @@ import { teamRouter } from './teamRoutes.js'
 import { bookingRouter } from './bookingRoutes.js'
 import { guestRouter } from './guestRoutes.js'
 import { whatsappRouter } from './whatsappRoutes.js'
+import { reportRouter } from './reportRoutes.js'
+import { leadRouter } from './leadRoutes.js'
+import { settingsRouter } from './settingsRoutes.js'
 
 const { PORT = 8787, CLIENT_ORIGIN = 'http://localhost:5173', WHATSAPP_WEBHOOK_SECRET_PATH } = process.env
 
@@ -19,9 +22,7 @@ const app = express()
 // forward plain HTTP internally - without this, Express can't tell the
 // original request was secure, which breaks secure-cookie behavior.
 app.set('trust proxy', 1)
-// Keep the raw body around too - Meta's webhook signature is computed over
-// the exact raw bytes, not the re-serialized parsed object.
-app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf } }))
+app.use(express.json())
 app.use(cookieParser())
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }))
 
@@ -35,6 +36,9 @@ app.use('/api/guests', guestRouter)
 // is the substitute protection: a long random segment nobody can guess,
 // combined with payload validation (WABA/phone number ID) inside the router.
 app.use(`/api/whatsapp/webhook/${WHATSAPP_WEBHOOK_SECRET_PATH}`, whatsappRouter)
+app.use('/api/reports', reportRouter)
+app.use('/api/leads', leadRouter)
+app.use('/api/settings', settingsRouter)
 
 app.listen(PORT, () => {
   console.log(`Auth server listening on http://localhost:${PORT}`)

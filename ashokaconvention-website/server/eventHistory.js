@@ -13,8 +13,9 @@ if (!GOOGLE_SHEETS_ID) {
 
 const HEADER = [
   'Event ID', 'Action', 'Booking Date', 'Advance Payment', 'Balance', 'Payment Date',
-  'Customer Name', 'Customer Email', 'Customer Mobile', 'Fully Paid', 'Changed By', 'Changed Date'
+  'Customer Name', 'Customer Email', 'Customer Mobile', 'Fully Paid', 'Changed By', 'Changed Date', 'Hall'
 ]
+const LAST_COL = 'M'
 
 const credentials = JSON.parse(readFileSync(GOOGLE_SERVICE_ACCOUNT_KEY_PATH, 'utf-8'))
 const auth = new google.auth.GoogleAuth({
@@ -39,9 +40,17 @@ async function ensureTab() {
         spreadsheetId: GOOGLE_SHEETS_ID,
         requestBody: { requests: [{ addSheet: { properties: { title: EVENT_HISTORY_TAB } } }] }
       })
+    }
+    const { data: headerData } = await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEETS_ID,
+      range: `${EVENT_HISTORY_TAB}!A1:${LAST_COL}1`
+    })
+    const currentHeader = (headerData.values || [[]])[0]
+    const isCurrent = HEADER.every((col, i) => currentHeader[i] === col)
+    if (!isCurrent) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: GOOGLE_SHEETS_ID,
-        range: `${EVENT_HISTORY_TAB}!A1:L1`,
+        range: `${EVENT_HISTORY_TAB}!A1:${LAST_COL}1`,
         valueInputOption: 'RAW',
         requestBody: { values: [HEADER] }
       })
@@ -50,18 +59,18 @@ async function ensureTab() {
   return tabReady
 }
 
-export async function appendHistory({ eventId, action, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, actor }) {
+export async function appendHistory({ eventId, action, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, hall, actor }) {
   await ensureTab()
   await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${EVENT_HISTORY_TAB}!A2:L`,
+    range: `${EVENT_HISTORY_TAB}!A2:${LAST_COL}`,
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
     requestBody: {
       values: [[
         eventId, action, bookingDate || '', advancePayment || '', balance || '', paymentDate || '',
         customerName || '', customerEmail || '', customerMobile || '', fullyPaid ? 'TRUE' : 'FALSE',
-        actor, new Date().toISOString()
+        actor, new Date().toISOString(), hall || ''
       ]]
     }
   })

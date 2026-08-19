@@ -11,7 +11,8 @@ if (!GOOGLE_SHEETS_ID) {
   throw new Error('GOOGLE_SHEETS_ID must be set (see server/.env.example)')
 }
 
-const HEADER = ['Phone', 'Name', 'First Message', 'Last Message', 'Message Count', 'Ad Source', 'Assigned To', 'Status', 'Lost Reason']
+const HEADER = ['Phone', 'Name', 'First Message', 'Last Message', 'Message Count', 'Ad Source', 'Assigned To', 'Status', 'Lost Reason', 'Last Away Sent']
+const LAST_COL = 'J'
 
 const credentials = JSON.parse(readFileSync(GOOGLE_SERVICE_ACCOUNT_KEY_PATH, 'utf-8'))
 const auth = new google.auth.GoogleAuth({
@@ -31,6 +32,9 @@ export function normalizePhone(phone) {
 
 // Creates the WhatsApp Leads tab the first time it's needed - a separate
 // sheet from Guests, since these are WhatsApp inquiries, not site sign-ins.
+// Also self-heals the header row on every server start (see events.js for
+// why - a stale header here previously caused values.append to misalign new
+// rows into the wrong columns entirely).
 async function ensureTab() {
   if (tabReady) return tabReady
   tabReady = (async () => {
@@ -41,9 +45,17 @@ async function ensureTab() {
         spreadsheetId: GOOGLE_SHEETS_ID,
         requestBody: { requests: [{ addSheet: { properties: { title: WHATSAPP_LEADS_TAB } } }] }
       })
+    }
+    const { data: headerData } = await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEETS_ID,
+      range: `${WHATSAPP_LEADS_TAB}!A1:${LAST_COL}1`
+    })
+    const currentHeader = (headerData.values || [[]])[0]
+    const isCurrent = HEADER.every((col, i) => currentHeader[i] === col)
+    if (!isCurrent) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: GOOGLE_SHEETS_ID,
-        range: `${WHATSAPP_LEADS_TAB}!A1:I1`,
+        range: `${WHATSAPP_LEADS_TAB}!A1:${LAST_COL}1`,
         valueInputOption: 'RAW',
         requestBody: { values: [HEADER] }
       })
@@ -53,7 +65,7 @@ async function ensureTab() {
 }
 
 function rowToLead(row, rowNumber) {
-  const [phone, name, firstMessage, lastMessage, messageCount, adSource, assignedTo, status, lostReason] = row
+  const [phone, name, firstMessage, lastMessage, messageCount, adSource, assignedTo, status, lostReason, lastAwaySent] = row
   return {
     rowNumber,
     phone: (phone || '').trim(),
@@ -64,13 +76,14 @@ function rowToLead(row, rowNumber) {
     adSource: adSource || '',
     assignedTo: (assignedTo || '').trim().toLowerCase(),
     status: status || 'open',
-    lostReason: lostReason || ''
+    lostReason: lostReason || '',
+    lastAwaySent: lastAwaySent || ''
   }
 }
 
 async function fetchLeads() {
   await ensureTab()
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEETS_ID, range: `${WHATSAPP_LEADS_TAB}!A2:I` })
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEETS_ID, range: `${WHATSAPP_LEADS_TAB}!A2:${LAST_COL}` })
   return (res.data.values || []).map((row, i) => rowToLead(row, i + 2)).filter((l) => l.phone)
 }
 
@@ -100,17 +113,44 @@ async function bumpMessageCount(phone) {
 // Called on every inbound WhatsApp message. Adds a new row the first time a
 // phone number messages in, otherwise bumps the existing row. adSource is
 // only present on the very first message of a conversation that came from a
-// Click-to-WhatsApp ad.
+// Click-to-WhatsApp ad. Returns { isNew } so callers (the greeting-message
+// trigger) can tell first-time contacts apart from returning ones.
 export async function recordLead({ phone, name, adSource }) {
   const now = new Date().toISOString()
-  if (await bumpMessageCount(phone)) return
+  if (await bumpMessageCount(phone)) return { isNew: false }
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${WHATSAPP_LEADS_TAB}!A2:I`,
+    range: `${WHATSAPP_LEADS_TAB}!A2:${LAST_COL}`,
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [[phone, name || '', now, now, 1, adSource || '', '', 'open', '']] }
+    requestBody: { values: [[phone, name || '', now, now, 1, adSource || '', '', 'open', '', '']] }
+  })
+  return { isNew: true }
+}
+
+const AWAY_MESSAGE_COOLDOWN_MS = 24 * 60 * 60 * 1000
+
+// True if this number has never gotten an away message, or its last one was
+// more than the cooldown window ago - keeps an active back-and-forth from
+// getting the same away reply on every single message.
+export async function shouldSendAwayMessage(phone) {
+  const leads = await fetchLeads()
+  const existing = leads.find((l) => normalizePhone(l.phone) === normalizePhone(phone))
+  if (!existing || !existing.lastAwaySent) return true
+  return Date.now() - new Date(existing.lastAwaySent).getTime() > AWAY_MESSAGE_COOLDOWN_MS
+}
+
+export async function markAwaySent(phone) {
+  const leads = await fetchLeads()
+  const existing = leads.find((l) => normalizePhone(l.phone) === normalizePhone(phone))
+  if (!existing) return
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: GOOGLE_SHEETS_ID,
+    range: `${WHATSAPP_LEADS_TAB}!${LAST_COL}${existing.rowNumber}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[new Date().toISOString()]] }
   })
 }
 

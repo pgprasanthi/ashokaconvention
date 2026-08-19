@@ -84,12 +84,34 @@ main{flex:1}
 .admin-divider{border:none;border-top:1px solid #eef1f4;margin:48px 0 24px}
 .guests-list p{color:#64748b;font-size:0.9rem}
 
+/* ── Report stats ── */
+.report-summary{display:flex;flex-wrap:wrap;gap:16px;margin:24px 0}
+.report-stat{
+  flex:1;min-width:140px;padding:18px 20px;border-radius:10px;
+  background:#f8fafc;border:1px solid #eef1f4;
+}
+.report-stat-value{display:block;font-size:1.8rem;font-weight:700;color:var(--accent)}
+.report-stat-label{display:block;font-size:0.8rem;color:#64748b;margin-top:4px}
+
+.report-tabs{display:flex;gap:8px;border-bottom:1px solid #e2e8f0;margin:8px 0 20px;flex-wrap:wrap}
+.report-tab{
+  padding:10px 16px;border:none;background:none;cursor:pointer;
+  font-size:0.9rem;font-weight:600;color:#64748b;border-bottom:2px solid transparent;
+  margin-bottom:-1px;
+}
+.report-tab:hover{color:#334155}
+.report-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
 .team-error{color:#b91c1c;background:#fef2f2;border-radius:6px;padding:10px 14px;margin:16px 0}
+.team-success{color:#166534;background:#f0fdf4;border-radius:6px;padding:10px 14px;margin:16px 0}
 
 .team-form{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0;align-items:center}
-.team-form input,.team-form select{
-  padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem;
+.team-form input,.team-form select,.team-form textarea{
+  padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem;font-family:inherit;
 }
+.team-form textarea{width:100%;resize:vertical}
+.settings-form{flex-direction:column;align-items:stretch;max-width:640px;gap:16px}
+.settings-form .booking-checkbox-field{align-self:flex-start}
 .team-form button{
   padding:8px 18px;border:none;border-radius:6px;background:var(--accent);
   color:white;font-weight:600;cursor:pointer;
@@ -127,6 +149,14 @@ main{flex:1}
 
 /* ── Booking calendar ── */
 .booking-panel{max-width:1100px}
+.booking-hall-filter{
+  display:flex;align-items:center;gap:8px;margin-top:12px;
+  font-size:0.85rem;font-weight:600;color:#64748b;
+}
+.booking-hall-filter select{
+  font-size:0.9rem;font-weight:600;color:#334155;
+  padding:6px 10px;border-radius:6px;border:1px solid #cbd5e1;
+}
 .booking-calendar-wrap{margin-top:16px}
 .booking-calendar-wrap .rbc-event{background-color:var(--accent);border-color:var(--accent)}
 .booking-calendar-wrap .rbc-event.rbc-event-incomplete{background-color:#d97706;border-color:#d97706}
