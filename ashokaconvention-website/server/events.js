@@ -1,103 +1,30 @@
-import { readFileSync } from 'fs'
-import { google } from 'googleapis'
+import { query, ensureSchema, toNullIfBlank, dateToISODate, dateToISOString } from './db.js'
 import { appendHistory } from './eventHistory.js'
 
-const {
-  GOOGLE_SHEETS_ID,
-  GOOGLE_SERVICE_ACCOUNT_KEY_PATH = './credentials/google-service-account.json',
-  EVENTS_TAB = 'Events'
-} = process.env
-
-if (!GOOGLE_SHEETS_ID) {
-  throw new Error('GOOGLE_SHEETS_ID must be set (see server/.env.example)')
-}
-
-const HEADER = [
-  'Event ID', 'Booking Date', 'Advance Payment', 'Balance', 'Payment Date',
-  'Customer Name', 'Customer Email', 'Customer Mobile', 'Fully Paid',
-  'Created By', 'Created Date', 'Updated Date', 'Updated By', 'Deleted', 'Hall'
-]
-const LAST_COL = 'O'
-
-const credentials = JSON.parse(readFileSync(GOOGLE_SERVICE_ACCOUNT_KEY_PATH, 'utf-8'))
-const auth = new google.auth.GoogleAuth({
-  credentials,
-  scopes: ['https://www.googleapis.com/auth/spreadsheets']
-})
-const sheets = google.sheets({ version: 'v4', auth })
-
-let tabReady = null
-
-// Creates the Events tab the first time it's needed, so no manual sheet
-// setup is required. Also self-heals the header row on every server start:
-// past schema additions (Fully Paid, Deleted) left a stale header behind
-// because it was only ever written on tab creation, which once caused
-// values.append to silently misalign new rows into the wrong columns.
-// Rewriting the header (never the data rows) each time closes that gap.
-async function ensureTab() {
-  if (tabReady) return tabReady
-  tabReady = (async () => {
-    const { data } = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEETS_ID })
-    const exists = data.sheets.some((s) => s.properties.title === EVENTS_TAB)
-    if (!exists) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: GOOGLE_SHEETS_ID,
-        requestBody: { requests: [{ addSheet: { properties: { title: EVENTS_TAB } } }] }
-      })
-    }
-    const { data: headerData } = await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_ID,
-      range: `${EVENTS_TAB}!A1:${LAST_COL}1`
-    })
-    const currentHeader = (headerData.values || [[]])[0]
-    const isCurrent = HEADER.every((col, i) => currentHeader[i] === col)
-    if (!isCurrent) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: GOOGLE_SHEETS_ID,
-        range: `${EVENTS_TAB}!A1:${LAST_COL}1`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [HEADER] }
-      })
-    }
-  })()
-  return tabReady
-}
-
-function rowToEvent(row, rowNumber) {
-  const [eventId, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, createdBy, createdDate, updatedDate, updatedBy, deleted, hall] = row
+function rowToEvent(row) {
   return {
-    rowNumber,
-    eventId: (eventId || '').trim(),
-    bookingDate: bookingDate || '',
-    advancePayment: advancePayment || '',
-    balance: balance || '',
-    paymentDate: paymentDate || '',
-    customerName: customerName || '',
-    customerEmail: customerEmail || '',
-    customerMobile: customerMobile || '',
-    fullyPaid: fullyPaid === true || fullyPaid === 'TRUE',
-    createdBy: createdBy || '',
-    createdDate: createdDate || '',
-    updatedDate: updatedDate || '',
-    updatedBy: updatedBy || '',
-    deleted: deleted === true || deleted === 'TRUE',
-    hall: hall || ''
+    eventId: row.event_id,
+    bookingDate: dateToISODate(row.booking_date),
+    advancePayment: row.advance_payment ?? '',
+    balance: row.balance ?? '',
+    paymentDate: dateToISODate(row.payment_date),
+    customerName: row.customer_name,
+    customerEmail: row.customer_email,
+    customerMobile: row.customer_mobile,
+    fullyPaid: row.fully_paid,
+    createdBy: row.created_by,
+    createdDate: dateToISOString(row.created_date),
+    updatedDate: dateToISOString(row.updated_date),
+    updatedBy: row.updated_by,
+    deleted: row.deleted,
+    hall: row.hall
   }
 }
 
-function toRow(e) {
-  return [
-    e.eventId, e.bookingDate, e.advancePayment, e.balance, e.paymentDate,
-    e.customerName, e.customerEmail, e.customerMobile, e.fullyPaid ? 'TRUE' : 'FALSE',
-    e.createdBy, e.createdDate, e.updatedDate, e.updatedBy, e.deleted ? 'TRUE' : 'FALSE',
-    e.hall || ''
-  ]
-}
-
 async function fetchEvents() {
-  await ensureTab()
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: GOOGLE_SHEETS_ID, range: `${EVENTS_TAB}!A2:${LAST_COL}` })
-  return (res.data.values || []).map((row, i) => rowToEvent(row, i + 2)).filter((e) => e.eventId)
+  await ensureSchema()
+  const { rows } = await query('SELECT * FROM events ORDER BY created_date ASC')
+  return rows.map(rowToEvent)
 }
 
 export async function listEvents() {
@@ -107,32 +34,21 @@ export async function listEvents() {
 
 // eventId is the linked Google Calendar event id.
 export async function createEvent({ eventId, bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, hall, actor }) {
+  await ensureSchema()
   const now = new Date().toISOString()
+  await query(
+    `INSERT INTO events (event_id, booking_date, advance_payment, balance, payment_date, customer_name, customer_email, customer_mobile, fully_paid, created_by, created_date, updated_date, updated_by, deleted, hall)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $10, FALSE, $12)`,
+    [
+      eventId, toNullIfBlank(bookingDate), toNullIfBlank(advancePayment), toNullIfBlank(balance), toNullIfBlank(paymentDate),
+      customerName || '', customerEmail || '', customerMobile || '', Boolean(fullyPaid), actor, now, hall || ''
+    ]
+  )
   const event = {
-    eventId,
-    bookingDate: bookingDate || '',
-    advancePayment: advancePayment || '',
-    balance: balance || '',
-    paymentDate: paymentDate || '',
-    customerName: customerName || '',
-    customerEmail: customerEmail || '',
-    customerMobile: customerMobile || '',
-    fullyPaid: Boolean(fullyPaid),
-    createdBy: actor,
-    createdDate: now,
-    updatedDate: now,
-    updatedBy: actor,
-    deleted: false,
-    hall: hall || ''
+    eventId, bookingDate: bookingDate || '', advancePayment: advancePayment || '', balance: balance || '', paymentDate: paymentDate || '',
+    customerName: customerName || '', customerEmail: customerEmail || '', customerMobile: customerMobile || '', fullyPaid: Boolean(fullyPaid),
+    createdBy: actor, createdDate: now, updatedDate: now, updatedBy: actor, deleted: false, hall: hall || ''
   }
-  await ensureTab()
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${EVENTS_TAB}!A2:${LAST_COL}`,
-    valueInputOption: 'RAW',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [toRow(event)] }
-  })
   await appendHistory({ ...event, action: 'created', actor })
   return event
 }
@@ -143,9 +59,10 @@ export async function createEvent({ eventId, bookingDate, advancePayment, balanc
 // ignored rather than applied, enforced here so it can't be bypassed by
 // calling the API directly.
 export async function updateEvent(eventId, { bookingDate, advancePayment, balance, paymentDate, customerName, customerEmail, customerMobile, fullyPaid, hall, actor }) {
-  const events = await fetchEvents()
-  const existing = events.find((e) => e.eventId === eventId)
-  if (!existing) throw new Error('Event not found')
+  await ensureSchema()
+  const { rows } = await query('SELECT * FROM events WHERE event_id = $1', [eventId])
+  if (!rows[0]) throw new Error('Event not found')
+  const existing = rowToEvent(rows[0])
 
   const paymentLocked = existing.fullyPaid
   const merged = {
@@ -162,31 +79,32 @@ export async function updateEvent(eventId, { bookingDate, advancePayment, balanc
     updatedDate: new Date().toISOString(),
     updatedBy: actor
   }
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${EVENTS_TAB}!A${existing.rowNumber}:${LAST_COL}${existing.rowNumber}`,
-    valueInputOption: 'RAW',
-    requestBody: { values: [toRow(merged)] }
-  })
+  await query(
+    `UPDATE events SET booking_date = $1, advance_payment = $2, balance = $3, payment_date = $4, customer_name = $5,
+       customer_email = $6, customer_mobile = $7, fully_paid = $8, updated_date = $9, updated_by = $10, hall = $11
+     WHERE event_id = $12`,
+    [
+      toNullIfBlank(merged.bookingDate), toNullIfBlank(merged.advancePayment), toNullIfBlank(merged.balance), toNullIfBlank(merged.paymentDate),
+      merged.customerName, merged.customerEmail, merged.customerMobile, merged.fullyPaid, merged.updatedDate, merged.updatedBy, merged.hall, eventId
+    ]
+  )
   await appendHistory({ ...merged, action: 'updated', actor })
   return merged
 }
 
-// Soft delete: the row stays in the sheet forever with Deleted=TRUE rather
-// than being removed, so payment/customer history is never lost. The
+// Soft delete: the row stays in the database forever with deleted=TRUE
+// rather than being removed, so payment/customer history is never lost. The
 // Google Calendar event itself is still actually deleted (by the caller,
 // via bookings.js) so the calendar slot frees up.
 export async function deleteEvent(eventId, actor) {
-  const events = await fetchEvents()
-  const existing = events.find((e) => e.eventId === eventId)
-  if (!existing) return
+  await ensureSchema()
+  const { rows } = await query('SELECT * FROM events WHERE event_id = $1', [eventId])
+  if (!rows[0]) return
+  const existing = rowToEvent(rows[0])
 
-  const merged = { ...existing, deleted: true, updatedDate: new Date().toISOString(), updatedBy: actor }
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: GOOGLE_SHEETS_ID,
-    range: `${EVENTS_TAB}!A${existing.rowNumber}:${LAST_COL}${existing.rowNumber}`,
-    valueInputOption: 'RAW',
-    requestBody: { values: [toRow(merged)] }
-  })
+  const updatedDate = new Date().toISOString()
+  await query('UPDATE events SET deleted = TRUE, updated_date = $1, updated_by = $2 WHERE event_id = $3', [updatedDate, actor, eventId])
+
+  const merged = { ...existing, deleted: true, updatedDate, updatedBy: actor }
   await appendHistory({ ...merged, action: 'deleted', actor })
 }
