@@ -112,39 +112,53 @@ main{flex:1}
 .team-form textarea{width:100%;resize:vertical}
 .settings-form{flex-direction:column;align-items:stretch;max-width:640px;gap:16px}
 .settings-form .booking-checkbox-field{align-self:flex-start}
-.team-form button{
-  padding:8px 18px;border:none;border-radius:6px;background:var(--accent);
-  color:white;font-weight:600;cursor:pointer;
+/* ── Unified admin-panel button system ──
+   Every button in the admin panel/booking modal falls into one of three
+   looks, regardless of which component renders it: primary (the main
+   action - teal, shadow, lifts on hover), neutral (secondary/row-level
+   actions - plain white/bordered), or destructive (red, same weight as
+   primary). Mixing ad-hoc one-off button styles per component was exactly
+   why buttons looked inconsistent across pages. */
+.team-form button,
+.team-actions button{
+  padding:9px 20px;border-radius:8px;border:1px solid var(--accent);
+  background:var(--accent);color:white;font-weight:600;font-size:0.85rem;
+  cursor:pointer;box-shadow:0 4px 16px rgba(14,165,164,0.35);
+  transition:transform 0.15s ease,box-shadow 0.15s ease,background 0.15s ease,border-color 0.15s ease,color 0.15s ease;
+}
+.team-form button:hover,
+.team-actions button:hover{
+  background:#0c8a89;border-color:#0c8a89;
+  transform:translateY(-1px);box-shadow:0 6px 20px rgba(14,165,164,0.5);
 }
 
 .team-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:0.9rem}
 .team-table th,.team-table td{padding:10px 12px;text-align:left;border-bottom:1px solid #eef1f4}
 .team-table th{color:#64748b;font-weight:600;font-size:0.8rem;text-transform:uppercase}
 .team-actions{display:flex;gap:8px;white-space:nowrap}
-.team-actions button{
-  padding:5px 12px;border:1px solid #d1d5db;border-radius:6px;background:white;
-  cursor:pointer;font-size:0.85rem;
+/* Neutral: secondary/non-committing actions (Cancel, Edit, Back, Next...) -
+   same shape/weight as the primary button, just not the main CTA. */
+.team-actions .booking-step-nav-btn,
+.team-actions button.booking-neutral-btn{
+  background:white;border-color:#d1d5db;color:#334155;box-shadow:none;
 }
-.team-actions button:hover{background:#f1f5f9}
-.team-actions .booking-save-btn{
-  background:var(--accent);border-color:var(--accent);color:white;
-  border-radius:8px;font-weight:600;padding:8px 20px;
-  box-shadow:0 4px 16px rgba(14,165,164,0.35);
-  transition:transform 0.15s ease,box-shadow 0.15s ease,background 0.15s ease;
-}
-.team-actions .booking-save-btn:hover{
-  background:#0c8a89;border-color:#0c8a89;color:white;
-  transform:translateY(-1px);box-shadow:0 6px 20px rgba(14,165,164,0.5);
+.team-actions .booking-step-nav-btn:hover,
+.team-actions button.booking-neutral-btn:hover{
+  background:#f8fafc;border-color:#94a3b8;color:#0f172a;
+  transform:none;box-shadow:none;
 }
 .team-actions .booking-cancel-btn{
   background:#dc2626;border-color:#dc2626;color:white;
-  border-radius:8px;font-weight:600;padding:8px 20px;
   box-shadow:0 4px 16px rgba(220,38,38,0.35);
-  transition:transform 0.15s ease,box-shadow 0.15s ease,background 0.15s ease;
 }
 .team-actions .booking-cancel-btn:hover{
   background:#b91c1c;border-color:#b91c1c;color:white;
   transform:translateY(-1px);box-shadow:0 6px 20px rgba(220,38,38,0.5);
+}
+.team-form button:disabled,
+.team-actions button:disabled{
+  background:#cbd5e1;border-color:#cbd5e1;color:#64748b;
+  cursor:not-allowed;box-shadow:none;transform:none;
 }
 
 /* ── Booking calendar ── */
@@ -184,27 +198,49 @@ main{flex:1}
   display:grid;grid-template-columns:1fr 1fr;
   gap:4px 20px;align-items:start;margin-top:8px;
 }
+.booking-fieldset{border:0;margin:0;padding:0;min-width:0}
 .booking-modal-grid h5{grid-column:1 / -1;margin:12px 0 -4px}
 .booking-field{
   display:flex;flex-direction:column;gap:4px;
   font-size:0.78rem;font-weight:600;color:#64748b;
 }
 .booking-field-full{grid-column:1 / -1}
+.booking-computed-value{
+  margin:0;padding:8px 12px;border-radius:6px;background:#f1f5f9;
+  color:#334155;font-size:0.9rem;font-weight:700;
+}
 .booking-checkbox-field{
   display:flex;align-items:center;gap:8px;align-self:end;
   font-size:0.85rem;font-weight:600;color:#334155;padding-bottom:2px;
 }
 .booking-checkbox-field input{width:16px;height:16px;accent-color:var(--accent)}
 .team-form input:disabled{background:#f1f5f9;color:#334155;cursor:not-allowed;-webkit-text-fill-color:#334155;opacity:1}
-.booking-modal-close{
+/* Same specificity-vs-generic-button-rule issue as .booking-step-tab above -
+   this needs to beat ".team-form button" to keep its small circular-icon
+   look instead of becoming a solid teal button. */
+.booking-modal .booking-modal-close{
   position:absolute;top:12px;right:12px;
-  background:none;border:none;cursor:pointer;
-  width:28px;height:28px;border-radius:50%;
-  font-size:0.9rem;color:#64748b;
+  background:none;border:none;box-shadow:none;cursor:pointer;
+  width:28px;height:28px;padding:0;border-radius:50%;
+  font-size:0.9rem;font-weight:400;color:#64748b;
   display:flex;align-items:center;justify-content:center;
   transition:background 0.15s;
 }
-.booking-modal-close:hover{background:#f1f5f9;color:#0f172a}
+.booking-modal .booking-modal-close:hover{background:#f1f5f9;color:#0f172a;transform:none;box-shadow:none}
+
+.booking-step-tabs{display:flex;gap:4px;margin:16px 0 4px;border-bottom:1px solid #e2e8f0}
+/* Extra-specific selector (two classes) deliberately beats the generic
+   ".team-form button" rule above, which would otherwise paint these solid
+   teal like every other button - these are a plain text tab strip, not
+   buttons, and need their own reset for background/border/shadow/padding. */
+.booking-step-tabs .booking-step-tab{
+  flex:1;padding:10px 8px;border:none;background:none;box-shadow:none;
+  font-size:0.8rem;font-weight:700;color:#94a3b8;text-align:center;
+  border-bottom:2px solid transparent;border-radius:0;
+  transition:color 0.15s,border-color 0.15s;
+}
+.booking-step-tabs .booking-step-tab:hover{color:#475569;background:none;box-shadow:none;transform:none}
+.booking-step-tabs .booking-step-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
 /* ── Guest landing ── */
 .guest-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}

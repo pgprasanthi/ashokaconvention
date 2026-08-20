@@ -179,7 +179,7 @@ export default function AdminPanel() {
                     </td>
                     <td className="team-actions">
                       <button onClick={() => saveEdit(m.email)}>Save</button>
-                      <button onClick={cancelEdit}>Cancel</button>
+                      <button className="booking-neutral-btn" onClick={cancelEdit}>Cancel</button>
                     </td>
                   </>
                 ) : (
@@ -190,8 +190,8 @@ export default function AdminPanel() {
                     <td>{m.joinedOn}</td>
                     <td>{m.role}</td>
                     <td className="team-actions">
-                      <button onClick={() => startEdit(m)}>Edit</button>
-                      <button onClick={() => removeMember(m.email)}>Remove</button>
+                      <button className="booking-neutral-btn" onClick={() => startEdit(m)}>Edit</button>
+                      <button className="booking-cancel-btn" onClick={() => removeMember(m.email)}>Remove</button>
                     </td>
                   </>
                 )}

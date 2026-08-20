@@ -23,8 +23,8 @@ In the new service's **Environment** tab, add everything from
 `server/.env.example` except `PORT` (Render sets that automatically):
 
 - `GOOGLE_CLIENT_ID`
-- `GOOGLE_SHEETS_ID`
-- `TEAM_RANGE`
+- `DATABASE_URL` - the Render Postgres **Internal** Database URL (this
+  service and the database are both on Render, same region)
 - `TEAM_CACHE_TTL_MS`
 - `GOOGLE_CALENDAR_ID`
 - `SESSION_SECRET`
@@ -88,7 +88,7 @@ These were fixed ahead of time so deployment doesn't need further changes:
 
 - Open the deployed frontend, sign in, confirm the session persists on
   refresh (checks the cookie settings are correct)
-- Open the Calendar page and add/edit a booking (checks Sheets + Calendar
+- Open the Calendar page and add/edit a booking (checks Postgres + Calendar
   API access from the deployed environment)
-- Sign in with an account *not* in the Team sheet and confirm it resolves
+- Sign in with an account *not* in `team_members` and confirm it resolves
   to guest (checks the OAuth consent screen is actually published)

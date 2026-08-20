@@ -75,40 +75,95 @@ export function ensureSchema() {
     CREATE TABLE IF NOT EXISTS events (
       event_id TEXT PRIMARY KEY,
       booking_date DATE,
-      advance_payment NUMERIC,
+      amount_paid NUMERIC,
       balance NUMERIC,
       payment_date DATE,
       customer_name TEXT NOT NULL DEFAULT '',
       customer_email TEXT NOT NULL DEFAULT '',
       customer_mobile TEXT NOT NULL DEFAULT '',
+      customer_address TEXT NOT NULL DEFAULT '',
       fully_paid BOOLEAN NOT NULL DEFAULT FALSE,
       created_by TEXT NOT NULL DEFAULT '',
       created_date TIMESTAMPTZ,
       updated_date TIMESTAMPTZ,
       updated_by TEXT NOT NULL DEFAULT '',
       deleted BOOLEAN NOT NULL DEFAULT FALSE,
-      hall TEXT NOT NULL DEFAULT ''
+      hall TEXT NOT NULL DEFAULT '',
+      event_name TEXT NOT NULL DEFAULT '',
+      event_type TEXT NOT NULL DEFAULT '',
+      referred_by TEXT NOT NULL DEFAULT '',
+      committed_amount NUMERIC,
+      closed_by TEXT NOT NULL DEFAULT '',
+      guest_count INTEGER,
+      payment_due_date DATE,
+      cancellation_reason TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT ''
     );
+    -- ADD COLUMN IF NOT EXISTS handles the tables that already existed
+    -- before these fields were added - CREATE TABLE IF NOT EXISTS above only
+    -- helps on a brand new database.
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS customer_address TEXT NOT NULL DEFAULT '';
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS event_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT '';
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS referred_by TEXT NOT NULL DEFAULT '';
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS committed_amount NUMERIC;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS closed_by TEXT NOT NULL DEFAULT '';
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS guest_count INTEGER;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS payment_due_date DATE;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS cancellation_reason TEXT NOT NULL DEFAULT '';
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
     CREATE INDEX IF NOT EXISTS idx_events_customer_mobile ON events (customer_mobile);
     CREATE INDEX IF NOT EXISTS idx_events_created_date ON events (created_date);
     CREATE INDEX IF NOT EXISTS idx_events_deleted ON events (deleted);
+    -- Postgres has no ADD CONSTRAINT IF NOT EXISTS, so this is the standard
+    -- idiom: attempt it, swallow only the "already exists" error. Without
+    -- this, re-running ensureSchema() on every server restart would fail on
+    -- the second run and roll back this entire statement batch. A UNIQUE
+    -- constraint's backing index re-adds as "duplicate_table" (42P07), not
+    -- "duplicate_object" - catching both to be safe across Postgres versions.
+    DO $$
+    BEGIN
+      ALTER TABLE events ADD CONSTRAINT events_mobile_hall_date_unique UNIQUE (customer_mobile, hall, booking_date);
+    EXCEPTION
+      WHEN duplicate_object OR duplicate_table THEN NULL;
+    END $$;
 
     CREATE TABLE IF NOT EXISTS event_history (
       id SERIAL PRIMARY KEY,
       event_id TEXT NOT NULL,
       action TEXT NOT NULL,
       booking_date DATE,
-      advance_payment NUMERIC,
+      amount_paid NUMERIC,
       balance NUMERIC,
       payment_date DATE,
       customer_name TEXT NOT NULL DEFAULT '',
       customer_email TEXT NOT NULL DEFAULT '',
       customer_mobile TEXT NOT NULL DEFAULT '',
+      customer_address TEXT NOT NULL DEFAULT '',
       fully_paid BOOLEAN NOT NULL DEFAULT FALSE,
       changed_by TEXT NOT NULL DEFAULT '',
       changed_date TIMESTAMPTZ NOT NULL DEFAULT now(),
-      hall TEXT NOT NULL DEFAULT ''
+      hall TEXT NOT NULL DEFAULT '',
+      event_name TEXT NOT NULL DEFAULT '',
+      event_type TEXT NOT NULL DEFAULT '',
+      referred_by TEXT NOT NULL DEFAULT '',
+      committed_amount NUMERIC,
+      closed_by TEXT NOT NULL DEFAULT '',
+      guest_count INTEGER,
+      payment_due_date DATE,
+      cancellation_reason TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT ''
     );
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS customer_address TEXT NOT NULL DEFAULT '';
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS event_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT '';
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS referred_by TEXT NOT NULL DEFAULT '';
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS committed_amount NUMERIC;
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS closed_by TEXT NOT NULL DEFAULT '';
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS guest_count INTEGER;
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS payment_due_date DATE;
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS cancellation_reason TEXT NOT NULL DEFAULT '';
+    ALTER TABLE event_history ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
     CREATE INDEX IF NOT EXISTS idx_event_history_event_id ON event_history (event_id);
 
     CREATE TABLE IF NOT EXISTS whatsapp_leads (

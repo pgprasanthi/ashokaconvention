@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node index.js",
-    "start": "node index.js",
-    "migrate": "node migrateFromSheets.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",
