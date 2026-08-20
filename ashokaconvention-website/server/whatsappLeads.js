@@ -43,14 +43,26 @@ async function bumpMessageCount(phone) {
   return rowCount > 0
 }
 
+// A customer who goes quiet this long and then messages again is treated as
+// a fresh contact for greeting purposes (e.g. booked once, comes back
+// months later) - their lead row stays the same, only the greeting re-fires.
+const REGREET_GAP_MS = 60 * 24 * 60 * 60 * 1000
+
 // Called on every inbound WhatsApp message. Adds a new row the first time a
 // phone number messages in, otherwise bumps the existing row. adSource is
 // only present on the very first message of a conversation that came from a
 // Click-to-WhatsApp ad. Returns { isNew } so callers (the greeting-message
-// trigger) can tell first-time contacts apart from returning ones.
+// trigger) can tell first-time/long-gap contacts apart from ones already
+// in an active conversation.
 export async function recordLead({ phone, name, adSource }) {
   await ensureSchema()
-  if (await bumpMessageCount(phone)) return { isNew: false }
+  const existing = await findByPhone(phone)
+
+  if (existing) {
+    const gapMs = Date.now() - new Date(existing.lastMessage).getTime()
+    await bumpMessageCount(phone)
+    return { isNew: gapMs > REGREET_GAP_MS }
+  }
 
   const now = new Date().toISOString()
   await query(
