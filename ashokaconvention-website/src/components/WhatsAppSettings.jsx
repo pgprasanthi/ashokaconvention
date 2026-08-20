@@ -8,7 +8,10 @@ const EMPTY_FORM = {
   whatsapp_greeting_enabled: false,
   whatsapp_greeting_text: '',
   whatsapp_away_enabled: false,
-  whatsapp_away_text: ''
+  whatsapp_away_text: '',
+  whatsapp_menu_availability_text: '',
+  whatsapp_menu_booking_text: '',
+  whatsapp_menu_inquiry_text: ''
 }
 
 export default function WhatsAppSettings() {
@@ -28,7 +31,10 @@ export default function WhatsAppSettings() {
           whatsapp_greeting_enabled: data.whatsapp_greeting_enabled === 'TRUE',
           whatsapp_greeting_text: data.whatsapp_greeting_text || '',
           whatsapp_away_enabled: data.whatsapp_away_enabled === 'TRUE',
-          whatsapp_away_text: data.whatsapp_away_text || ''
+          whatsapp_away_text: data.whatsapp_away_text || '',
+          whatsapp_menu_availability_text: data.whatsapp_menu_availability_text || '',
+          whatsapp_menu_booking_text: data.whatsapp_menu_booking_text || '',
+          whatsapp_menu_inquiry_text: data.whatsapp_menu_inquiry_text || ''
         })
       } catch (err) {
         setError(err.message)
@@ -89,6 +95,37 @@ export default function WhatsAppSettings() {
             placeholder="Thanks for reaching out to Ashoka Convention! We'll get back to you shortly."
             value={form.whatsapp_greeting_text}
             onChange={(e) => setForm({ ...form, whatsapp_greeting_text: e.target.value })}
+          />
+        </label>
+        <p className="booking-field-full whatsapp-menu-hint">
+          Sent with 3 quick-reply buttons attached - <strong>Check Availability</strong>, <strong>Make a Booking</strong>,
+          and <strong>General Inquiry</strong>. Whichever the customer taps, they get the matching follow-up below.
+        </p>
+        <label className="booking-field booking-field-full">
+          Reply when "Check Availability" is tapped
+          <textarea
+            rows={2}
+            placeholder="Great! Please share the date and hall you're interested in, and we'll confirm availability."
+            value={form.whatsapp_menu_availability_text}
+            onChange={(e) => setForm({ ...form, whatsapp_menu_availability_text: e.target.value })}
+          />
+        </label>
+        <label className="booking-field booking-field-full">
+          Reply when "Make a Booking" is tapped
+          <textarea
+            rows={2}
+            placeholder="Awesome! To get started, please share your preferred date, hall, and event type."
+            value={form.whatsapp_menu_booking_text}
+            onChange={(e) => setForm({ ...form, whatsapp_menu_booking_text: e.target.value })}
+          />
+        </label>
+        <label className="booking-field booking-field-full">
+          Reply when "General Inquiry" is tapped
+          <textarea
+            rows={2}
+            placeholder="Sure! Please share your question and our team will get back to you shortly."
+            value={form.whatsapp_menu_inquiry_text}
+            onChange={(e) => setForm({ ...form, whatsapp_menu_inquiry_text: e.target.value })}
           />
         </label>
 

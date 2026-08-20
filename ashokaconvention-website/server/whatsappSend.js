@@ -7,7 +7,7 @@ const BASE_URL = 'https://api.dualhook.com/v25.0'
 // dashboard (Connection -> Overview -> Outbound API key), and a missing
 // value here shouldn't crash the entire backend the way those do. Sending
 // just no-ops with a warning until it's configured.
-export async function sendWhatsAppMessage(phone, text) {
+async function sendPayload(payload) {
   if (!DUALHOOK_LIVE_KEY) {
     console.warn('Skipped sending WhatsApp message: DUALHOOK_LIVE_KEY not configured yet')
     return
@@ -19,16 +19,32 @@ export async function sendWhatsAppMessage(phone, text) {
       Authorization: `Bearer ${DUALHOOK_LIVE_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: phone,
-      type: 'text',
-      text: { body: text }
-    })
+    body: JSON.stringify(payload)
   })
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Dualhook send failed (${res.status}): ${body}`)
   }
+}
+
+export async function sendWhatsAppMessage(phone, text) {
+  await sendPayload({ messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: text } })
+}
+
+// WhatsApp's native quick-reply buttons - max 3 per message, each title
+// capped at 20 characters by the Cloud API. The tap comes back on the
+// webhook as an "interactive" message with interactive.button_reply.id
+// matching whatever id was sent here.
+export async function sendWhatsAppButtons(phone, bodyText, buttons) {
+  await sendPayload({
+    messaging_product: 'whatsapp',
+    to: phone,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: bodyText },
+      action: { buttons: buttons.map(({ id, title }) => ({ type: 'reply', reply: { id, title } })) }
+    }
+  })
 }

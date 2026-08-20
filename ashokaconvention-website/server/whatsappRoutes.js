@@ -1,7 +1,21 @@
 import { Router } from 'express'
 import { recordLead, recordOutboundMessage, shouldSendAwayMessage, markAwaySent, normalizePhone } from './whatsappLeads.js'
 import { getSettings } from './settings.js'
-import { sendWhatsAppMessage } from './whatsappSend.js'
+import { sendWhatsAppMessage, sendWhatsAppButtons } from './whatsappSend.js'
+
+// The greeting doubles as a smart menu - these ids come back on the webhook
+// as interactive.button_reply.id when the customer taps one, and map to
+// which follow-up text (configured in WhatsApp Settings) to send next.
+const MENU_BUTTONS = [
+  { id: 'menu_availability', title: 'Check Availability' },
+  { id: 'menu_booking', title: 'Make a Booking' },
+  { id: 'menu_inquiry', title: 'General Inquiry' }
+]
+const MENU_REPLY_SETTING_KEY = {
+  menu_availability: 'whatsapp_menu_availability_text',
+  menu_booking: 'whatsapp_menu_booking_text',
+  menu_inquiry: 'whatsapp_menu_inquiry_text'
+}
 
 const { WHATSAPP_WEBHOOK_VERIFY_TOKEN, WHATSAPP_WABA_ID, WHATSAPP_PHONE_NUMBER_ID } = process.env
 
@@ -74,7 +88,8 @@ function extractMessages(body) {
         out.push({
           phone: message.from,
           name: contactsByWaId.get(message.from) || '',
-          adSource: message.referral?.headline || message.referral?.source_url || ''
+          adSource: message.referral?.headline || message.referral?.source_url || '',
+          buttonReplyId: message.interactive?.button_reply?.id || null
         })
       }
     }
@@ -100,12 +115,21 @@ function withPhoneLock(phone, fn) {
 // (first-time contacts only) and/or away message (at most once per cooldown
 // window) if enabled in Settings. Runs after the response is already sent,
 // so a slow Dualhook send call never delays Meta's acknowledgment.
-async function handleInboundMessage({ phone, name, adSource }) {
+async function handleInboundMessage({ phone, name, adSource, buttonReplyId }) {
   const { isNew } = await recordLead({ phone, name, adSource })
-
   const settings = await getSettings()
+
+  // A tap on one of the greeting's menu buttons - reply with whichever
+  // canned follow-up matches that topic and stop there (not a fresh
+  // contact, so the greeting/away logic below doesn't apply).
+  const settingKey = buttonReplyId && MENU_REPLY_SETTING_KEY[buttonReplyId]
+  if (settingKey) {
+    if (settings[settingKey]) await sendWhatsAppMessage(phone, settings[settingKey])
+    return
+  }
+
   if (isNew && settings.whatsapp_greeting_enabled === 'TRUE' && settings.whatsapp_greeting_text) {
-    await sendWhatsAppMessage(phone, settings.whatsapp_greeting_text)
+    await sendWhatsAppButtons(phone, settings.whatsapp_greeting_text, MENU_BUTTONS)
   }
   if (settings.whatsapp_away_enabled === 'TRUE' && settings.whatsapp_away_text && await shouldSendAwayMessage(phone)) {
     await sendWhatsAppMessage(phone, settings.whatsapp_away_text)
