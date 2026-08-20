@@ -101,6 +101,7 @@ main{flex:1}
 }
 .report-tab:hover{color:#334155}
 .report-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.report-download-btn{margin-left:auto;align-self:center;padding:6px 14px;font-size:0.82rem}
 
 .team-error{color:#b91c1c;background:#fef2f2;border-radius:6px;padding:10px 14px;margin:16px 0}
 .team-success{color:#166534;background:#f0fdf4;border-radius:6px;padding:10px 14px;margin:16px 0}
@@ -163,11 +164,12 @@ main{flex:1}
 
 /* ── Booking calendar ── */
 .booking-panel{max-width:1100px}
+.booking-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px}
 .booking-hall-filter{
-  display:flex;align-items:center;gap:8px;margin-top:12px;
+  display:flex;align-items:center;gap:8px;
   font-size:0.85rem;font-weight:600;color:#64748b;
 }
-.booking-hall-filter select{
+.booking-hall-filter select,.booking-hall-filter input{
   font-size:0.9rem;font-weight:600;color:#334155;
   padding:6px 10px;border-radius:6px;border:1px solid #cbd5e1;
 }

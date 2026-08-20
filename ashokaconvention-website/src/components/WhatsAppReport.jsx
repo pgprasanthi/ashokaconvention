@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { downloadCSV } from '../utils/csv'
 
 // Relative path in production - see AuthContext.jsx for why (same-origin
 // cookie via Render's rewrite proxy, avoids third-party cookie blocking).
@@ -51,6 +52,28 @@ export default function WhatsAppReport() {
 
   const hasReport = report && staffReport
 
+  const downloadActiveTab = () => {
+    if (activeTab === 'closed') {
+      downloadCSV(
+        `closed-deals_${start}_to_${end}.csv`,
+        ['Closed By', 'Client', 'Client Phone', 'Booking Date', 'Closed On'],
+        staffReport.deals.map((d) => [d.staffName, d.customerName || '', d.customerMobile || '', d.bookingDate || '', d.createdDate])
+      )
+    } else if (activeTab === 'failed') {
+      downloadCSV(
+        `failed-deals_${start}_to_${end}.csv`,
+        ['Name', 'Phone', 'First Message', 'Ad Source', 'Reason'],
+        report.leads.filter((l) => l.status === 'lost').map((l) => [l.name || '', l.phone, l.firstMessage, l.adSource || '', l.lostReason || ''])
+      )
+    } else {
+      downloadCSV(
+        `staff-performance_${start}_to_${end}.csv`,
+        ['Staff', 'Leads Assigned', 'Conversations', 'Leads Converted', 'Conversion Rate %', 'Not Closed', 'Deals Closed'],
+        staffReport.staff.map((s) => [s.name, s.leadsAssigned, s.conversations, s.converted, s.conversionRate, s.lost, s.dealsClosed])
+      )
+    }
+  }
+
   return (
     <section className="admin-panel">
       <h2>Reports</h2>
@@ -100,6 +123,9 @@ export default function WhatsAppReport() {
                 {t.label}
               </button>
             ))}
+            <button type="button" className="booking-neutral-btn report-download-btn" onClick={downloadActiveTab}>
+              ⬇ Download CSV
+            </button>
           </div>
 
           {activeTab === 'closed' && (

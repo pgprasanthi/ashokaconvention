@@ -23,6 +23,17 @@ export default function LeadsInbox() {
   const [lostCategory, setLostCategory] = useState(LOST_REASONS[0])
   const [lostCustomReason, setLostCustomReason] = useState('')
 
+  // Filters by First Message date - blank means no bound on that side, so
+  // leaving both empty shows every lead (the default, unfiltered view).
+  const [dateStart, setDateStart] = useState('')
+  const [dateEnd, setDateEnd] = useState('')
+  const filteredLeads = leads.filter((l) => {
+    const day = (l.firstMessage || '').slice(0, 10)
+    if (dateStart && day < dateStart) return false
+    if (dateEnd && day > dateEnd) return false
+    return true
+  })
+
   const load = async () => {
     setLoading(true)
     try {
@@ -93,6 +104,22 @@ export default function LeadsInbox() {
 
       {error && <p className="team-error">{error}</p>}
 
+      <div className="booking-toolbar">
+        <label className="booking-hall-filter">
+          From
+          <input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} />
+        </label>
+        <label className="booking-hall-filter">
+          To
+          <input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} />
+        </label>
+        {(dateStart || dateEnd) && (
+          <button type="button" className="booking-neutral-btn" onClick={() => { setDateStart(''); setDateEnd('') }}>
+            Clear dates
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <p>Loading leads…</p>
       ) : (
@@ -110,7 +137,7 @@ export default function LeadsInbox() {
             </tr>
           </thead>
           <tbody>
-            {leads.map((l) => (
+            {filteredLeads.map((l) => (
               <tr key={l.phone}>
                 <td>{l.name || '—'}</td>
                 <td>{l.phone}</td>
@@ -133,8 +160,8 @@ export default function LeadsInbox() {
                 </td>
               </tr>
             ))}
-            {leads.length === 0 && (
-              <tr><td colSpan="8">No WhatsApp leads yet.</td></tr>
+            {filteredLeads.length === 0 && (
+              <tr><td colSpan="8">{leads.length === 0 ? 'No WhatsApp leads yet.' : 'No leads in this date range.'}</td></tr>
             )}
           </tbody>
         </table>

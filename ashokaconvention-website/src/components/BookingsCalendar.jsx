@@ -4,6 +4,7 @@ import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { enUS } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { useAuth } from '../context/AuthContext'
+import { downloadCSV } from '../utils/csv'
 
 // Relative path in production - see AuthContext.jsx for why (same-origin
 // cookie via Render's rewrite proxy, avoids third-party cookie blocking).
@@ -354,6 +355,29 @@ export default function BookingsCalendar() {
     }
   }
 
+  // Exports exactly what's currently on screen (respects the hall filter
+  // above) - pulled from the calendar's own `events` list rather than
+  // re-fetching, since that data is already loaded.
+  const downloadEventsCSV = () => {
+    if (!isAdmin) return
+    downloadCSV(
+      `bookings_${hallFilter === 'all' ? 'all-halls' : hallFilter.replace(/\s+/g, '-').toLowerCase()}.csv`,
+      [
+        'Hall', 'Title', 'Event Type', 'Start', 'End', 'Customer Name', 'Mobile', 'Email', 'Address',
+        'Guest Count', 'Referred By', 'Closed By', 'Committed Amount', 'Amount Paid', 'Balance', 'Fully Paid',
+        'Payment Date', 'Payment Due Date', 'Notes', 'Created By', 'Created Date'
+      ],
+      events.map(({ resource: b }) => [
+        b.hall || '', b.title || '', b.eventType || '', b.start, b.end,
+        b.customerName || '', b.customerMobile || '', b.customerEmail || '', b.customerAddress || '',
+        b.guestCount || '', b.referredBy || '', b.closedBy || '',
+        b.committedAmount || '', b.amountPaid || '', b.balance || '', b.fullyPaid ? 'Yes' : 'No',
+        b.paymentDate || '', b.paymentDueDate || '', b.notes || b.description || '',
+        b.createdBy || '', b.createdDate || ''
+      ])
+    )
+  }
+
   return (
     <section className="admin-panel booking-panel">
       <h2>Bookings Calendar</h2>
@@ -361,13 +385,20 @@ export default function BookingsCalendar() {
 
       {error && !formMode && <p className="team-error">{error}</p>}
 
-      <label className="booking-hall-filter">
-        Hall
-        <select value={hallFilter} onChange={(e) => setHallFilter(e.target.value)}>
-          <option value="all">All Halls</option>
-          {HALLS.map((h) => <option key={h} value={h}>{h}</option>)}
-        </select>
-      </label>
+      <div className="booking-toolbar">
+        <label className="booking-hall-filter">
+          Hall
+          <select value={hallFilter} onChange={(e) => setHallFilter(e.target.value)}>
+            <option value="all">All Halls</option>
+            {HALLS.map((h) => <option key={h} value={h}>{h}</option>)}
+          </select>
+        </label>
+        {isAdmin && (
+          <button type="button" className="booking-neutral-btn" onClick={downloadEventsCSV}>
+            ⬇ Download CSV
+          </button>
+        )}
+      </div>
 
       {loading ? (
         <p>Loading bookings…</p>
