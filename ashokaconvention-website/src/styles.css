@@ -212,6 +212,15 @@ main{flex:1}
   margin:0;padding:8px 12px;border-radius:6px;background:#f1f5f9;
   color:#334155;font-size:0.9rem;font-weight:700;
 }
+.wa-thread{
+  display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;
+  background:#e5ded6;border-radius:8px;padding:14px;
+}
+.wa-bubble{max-width:78%;padding:8px 11px;border-radius:9px;font-size:0.85rem;line-height:1.4;box-shadow:0 1px 1px rgba(0,0,0,0.08)}
+.wa-bubble p{margin:0;color:#111}
+.wa-bubble span{display:block;margin-top:4px;font-size:0.68rem;color:#667781}
+.wa-bubble.in{align-self:flex-start;background:#fff;border-top-left-radius:2px}
+.wa-bubble.out{align-self:flex-end;background:#d9fdd3;border-top-right-radius:2px}
 .booking-checkbox-field{
   display:flex;align-items:center;gap:8px;align-self:end;
   font-size:0.85rem;font-weight:600;color:#334155;padding-bottom:2px;

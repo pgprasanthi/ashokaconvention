@@ -23,6 +23,10 @@ export default function LeadsInbox() {
   const [lostCategory, setLostCategory] = useState(LOST_REASONS[0])
   const [lostCustomReason, setLostCustomReason] = useState('')
 
+  const [messagesPhone, setMessagesPhone] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
+
   // Filters by First Message date - blank means no bound on that side, so
   // leaving both empty shows every lead (the default, unfiltered view).
   const [dateStart, setDateStart] = useState('')
@@ -62,6 +66,26 @@ export default function LeadsInbox() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  const openMessages = async (phone) => {
+    setMessagesPhone(phone)
+    setMessagesLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/leads/${encodeURIComponent(phone)}/messages`, { credentials: 'include' })
+      if (!res.ok) throw new Error('Failed to load messages')
+      setMessages(await res.json())
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setMessagesLoading(false)
+    }
+  }
+
+  const closeMessages = () => {
+    setMessagesPhone(null)
+    setMessages([])
   }
 
   const openLostModal = (phone) => {
@@ -151,6 +175,7 @@ export default function LeadsInbox() {
                   ) : 'Open'}
                 </td>
                 <td className="team-actions">
+                  <button type="button" className="booking-neutral-btn" onClick={() => openMessages(l.phone)}>View Messages</button>
                   {!l.assignedTo && (
                     <button onClick={() => assignToMe(l.phone)}>Assign to me</button>
                   )}
@@ -198,6 +223,29 @@ export default function LeadsInbox() {
               <button type="submit" className="booking-cancel-btn">Confirm Not Closed</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {messagesPhone && (
+        <div className="booking-modal-overlay">
+          <div className="team-form booking-modal">
+            <button type="button" className="booking-modal-close" onClick={closeMessages} aria-label="Close">✕</button>
+            <h4>Conversation — {messagesPhone}</h4>
+            {messagesLoading ? (
+              <p>Loading messages…</p>
+            ) : messages.length === 0 ? (
+              <p>No messages logged for this number yet.</p>
+            ) : (
+              <div className="wa-thread">
+                {messages.map((m) => (
+                  <div key={m.id} className={`wa-bubble ${m.direction}`}>
+                    <p>{m.text || <em>(no text)</em>}</p>
+                    <span>{new Date(m.createdDate).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>

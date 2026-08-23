@@ -181,6 +181,16 @@ export function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_whatsapp_leads_status ON whatsapp_leads (status);
 
+    CREATE TABLE IF NOT EXISTS whatsapp_messages (
+      id SERIAL PRIMARY KEY,
+      phone TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      created_date TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_phone ON whatsapp_messages (phone);
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_created_date ON whatsapp_messages (created_date);
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT ''

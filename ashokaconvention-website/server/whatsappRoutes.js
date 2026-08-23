@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { recordLead, recordOutboundMessage, shouldSendAwayMessage, markAwaySent, normalizePhone } from './whatsappLeads.js'
+import { logMessage } from './whatsappMessages.js'
 import { getSettings } from './settings.js'
 import { sendWhatsAppMessage, sendWhatsAppButtons } from './whatsappSend.js'
 
@@ -67,7 +68,7 @@ function extractOutboundEchoes(body) {
     for (const change of entry.changes || []) {
       if (change.field !== 'smb_message_echoes') continue
       for (const message of change.value?.message_echoes || change.value?.messages || []) {
-        out.push({ phone: message.to || message.recipient_id })
+        out.push({ phone: message.to || message.recipient_id, text: message.text?.body || '' })
       }
     }
   }
@@ -89,7 +90,11 @@ function extractMessages(body) {
           phone: message.from,
           name: contactsByWaId.get(message.from) || '',
           adSource: message.referral?.headline || message.referral?.source_url || '',
-          buttonReplyId: message.interactive?.button_reply?.id || null
+          buttonReplyId: message.interactive?.button_reply?.id || null,
+          // Falls back to the tapped button's own label for interactive
+          // replies, so the conversation log reads as "Check Availability"
+          // rather than a blank line.
+          text: message.text?.body || message.interactive?.button_reply?.title || ''
         })
       }
     }
@@ -115,8 +120,9 @@ function withPhoneLock(phone, fn) {
 // (first-time contacts only) and/or away message (at most once per cooldown
 // window) if enabled in Settings. Runs after the response is already sent,
 // so a slow Dualhook send call never delays Meta's acknowledgment.
-async function handleInboundMessage({ phone, name, adSource, buttonReplyId }) {
+async function handleInboundMessage({ phone, name, adSource, buttonReplyId, text }) {
   const { isNew } = await recordLead({ phone, name, adSource })
+  await logMessage(phone, 'in', text)
   const settings = await getSettings()
 
   // A tap on one of the greeting's menu buttons - reply with whichever
@@ -124,15 +130,20 @@ async function handleInboundMessage({ phone, name, adSource, buttonReplyId }) {
   // contact, so the greeting/away logic below doesn't apply).
   const settingKey = buttonReplyId && MENU_REPLY_SETTING_KEY[buttonReplyId]
   if (settingKey) {
-    if (settings[settingKey]) await sendWhatsAppMessage(phone, settings[settingKey])
+    if (settings[settingKey]) {
+      await sendWhatsAppMessage(phone, settings[settingKey])
+      await logMessage(phone, 'out', settings[settingKey])
+    }
     return
   }
 
   if (isNew && settings.whatsapp_greeting_enabled === 'TRUE' && settings.whatsapp_greeting_text) {
     await sendWhatsAppButtons(phone, settings.whatsapp_greeting_text, MENU_BUTTONS)
+    await logMessage(phone, 'out', settings.whatsapp_greeting_text)
   }
   if (settings.whatsapp_away_enabled === 'TRUE' && settings.whatsapp_away_text && await shouldSendAwayMessage(phone)) {
     await sendWhatsAppMessage(phone, settings.whatsapp_away_text)
+    await logMessage(phone, 'out', settings.whatsapp_away_text)
     await markAwaySent(phone)
   }
 }
@@ -153,9 +164,12 @@ whatsappRouter.post('/', (req, res) => {
       console.error('Failed to process WhatsApp message:', err.message)
     })
   }
-  for (const { phone } of echoes) {
+  for (const { phone, text } of echoes) {
     recordOutboundMessage(phone).catch((err) => {
       console.error('Failed to record outbound WhatsApp message:', err.message)
+    })
+    logMessage(phone, 'out', text).catch((err) => {
+      console.error('Failed to log outbound WhatsApp message:', err.message)
     })
   }
 })
