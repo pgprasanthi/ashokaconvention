@@ -166,6 +166,43 @@ export function ensureSchema() {
     ALTER TABLE event_history ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
     CREATE INDEX IF NOT EXISTS idx_event_history_event_id ON event_history (event_id);
 
+    -- One row per (event, checklist item) that has ever been touched. Items
+    -- never touched simply have no row - the server merges the hardcoded
+    -- template (checklistTemplate.js) with whatever rows exist here on read,
+    -- so a newly-added template item shows up as 'pending' everywhere without
+    -- a backfill. status is 'pending' | 'done' | 'na'.
+    CREATE TABLE IF NOT EXISTS event_checks (
+      id SERIAL PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      phase TEXT NOT NULL DEFAULT '',
+      item_key TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      notes TEXT NOT NULL DEFAULT '',
+      checked_by TEXT NOT NULL DEFAULT '',
+      checked_date TIMESTAMPTZ,
+      UNIQUE (event_id, item_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_checks_event_id ON event_checks (event_id);
+
+    -- One row per payment-reminder WhatsApp message a staff member sends for
+    -- a booking. Not a queue - the queue is computed live from events with an
+    -- upcoming/overdue payment_due_date (see paymentReminders.js). This is the
+    -- sent-log: it drives the "already reminded on X by Y" state and keeps a
+    -- record of failed sends (send_status = 'sent' | 'skipped' | 'failed').
+    CREATE TABLE IF NOT EXISTS payment_reminders (
+      id SERIAL PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      due_date DATE,
+      balance_at_send NUMERIC,
+      phone TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL DEFAULT '',
+      sent_by TEXT NOT NULL DEFAULT '',
+      sent_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+      send_status TEXT NOT NULL DEFAULT 'sent',
+      error TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_payment_reminders_event_id ON payment_reminders (event_id);
+
     CREATE TABLE IF NOT EXISTS whatsapp_leads (
       id SERIAL PRIMARY KEY,
       phone TEXT NOT NULL UNIQUE,

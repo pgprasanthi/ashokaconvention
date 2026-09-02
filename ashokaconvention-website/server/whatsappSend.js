@@ -2,6 +2,13 @@ const { DUALHOOK_LIVE_KEY, WHATSAPP_PHONE_NUMBER_ID } = process.env
 
 const BASE_URL = 'https://api.dualhook.com/v25.0'
 
+// Callers that record a send outcome (e.g. payment reminders) use this to
+// tell "genuinely delivered" apart from "no-op'd because the key isn't set
+// yet" - sendPayload silently returns in the latter case rather than erroring.
+export function isWhatsAppConfigured() {
+  return Boolean(DUALHOOK_LIVE_KEY)
+}
+
 // Deliberately NOT a hard startup requirement like the other WHATSAPP_* env
 // vars - this key doesn't exist yet until it's generated in Dualhook's
 // dashboard (Connection -> Overview -> Outbound API key), and a missing

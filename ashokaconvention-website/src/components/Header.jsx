@@ -23,6 +23,7 @@ export default function Header({ onPageChange, currentPage, scrolled }) {
     ...(role === 'guest' ? [{ id: 'welcome', label: 'Welcome' }] : []),
     ...(user ? [{ id: 'bookings', label: 'Calendar' }] : []),
     ...(isAdmin || isStaff ? [{ id: 'leads', label: 'Leads' }] : []),
+    ...(isAdmin || isStaff ? [{ id: 'payments', label: 'Payments' }] : []),
     ...(isStaff ? [{ id: 'staff', label: 'Staff' }] : []),
     ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : []),
     ...(isAdmin ? [{ id: 'reports', label: 'Reports' }] : []),

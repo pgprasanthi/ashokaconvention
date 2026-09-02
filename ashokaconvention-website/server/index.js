@@ -10,6 +10,7 @@ import { whatsappRouter } from './whatsappRoutes.js'
 import { reportRouter } from './reportRoutes.js'
 import { leadRouter } from './leadRoutes.js'
 import { settingsRouter } from './settingsRoutes.js'
+import { paymentReminderRouter } from './paymentReminderRoutes.js'
 
 const { PORT = 8787, CLIENT_ORIGIN = 'http://localhost:5173', WHATSAPP_WEBHOOK_SECRET_PATH } = process.env
 
@@ -39,6 +40,7 @@ app.use(`/api/whatsapp/webhook/${WHATSAPP_WEBHOOK_SECRET_PATH}`, whatsappRouter)
 app.use('/api/reports', reportRouter)
 app.use('/api/leads', leadRouter)
 app.use('/api/settings', settingsRouter)
+app.use('/api/payment-reminders', paymentReminderRouter)
 
 app.listen(PORT, () => {
   console.log(`Auth server listening on http://localhost:${PORT}`)

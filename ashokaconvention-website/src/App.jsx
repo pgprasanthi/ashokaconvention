@@ -16,6 +16,7 @@ import GuestLanding from './components/GuestLanding'
 import BookingsCalendar from './components/BookingsCalendar'
 import WhatsAppReport from './components/WhatsAppReport'
 import LeadsInbox from './components/LeadsInbox'
+import PaymentReminders from './components/PaymentReminders'
 import WhatsAppSettings from './components/WhatsAppSettings'
 import { useAuth } from './context/AuthContext'
 
@@ -39,7 +40,7 @@ export default function App() {
     }, 50)
   }
 
-  const NO_HERO_PAGES = ['bookings', 'staff', 'admin', 'reports', 'leads', 'whatsapp-settings']
+  const NO_HERO_PAGES = ['bookings', 'staff', 'admin', 'reports', 'leads', 'payments', 'whatsapp-settings']
   const showHero = !NO_HERO_PAGES.includes(currentPage)
 
   return (
@@ -62,8 +63,9 @@ export default function App() {
           {currentPage === 'welcome' && role === 'guest' && <GuestLanding onNavigate={handlePageChange} />}
           {currentPage === 'bookings' && user && <BookingsCalendar />}
           {currentPage === 'leads' && (isAdmin || isStaff) && <LeadsInbox />}
+          {currentPage === 'payments' && (isAdmin || isStaff) && <PaymentReminders />}
           {currentPage === 'staff' && isStaff && <StaffPage />}
-          {currentPage === 'admin' && isAdmin && <AdminPanel />}
+          {currentPage === 'admin' && isAdmin && <AdminPanel onNavigate={handlePageChange} />}
           {currentPage === 'reports' && isAdmin && <WhatsAppReport />}
           {currentPage === 'whatsapp-settings' && isAdmin && <WhatsAppSettings />}
         </div>

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import GuestsList from './GuestsList'
+import DuePaymentsSummary from './DuePaymentsSummary'
 
 // Relative path in production - see AuthContext.jsx for why (same-origin
 // cookie via Render's rewrite proxy, avoids third-party cookie blocking).
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')
 const EMPTY_FORM = { email: '', role: 'staff', name: '', joinedOn: '', mobile: '' }
 
-export default function AdminPanel() {
+export default function AdminPanel({ onNavigate }) {
   const { user } = useAuth()
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -203,6 +204,8 @@ export default function AdminPanel() {
           </tbody>
         </table>
       )}
+
+      <DuePaymentsSummary onNavigate={onNavigate} />
 
       <hr className="admin-divider" />
       <GuestsList />

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAuth, requireRole } from './auth.js'
 import { listBookings, createBooking, updateBooking, deleteBooking } from './bookings.js'
 import { listEvents, createEvent, updateEvent, deleteEvent } from './events.js'
+import { getChecklist, saveChecks } from './eventChecks.js'
 import { HALLS } from './halls.js'
 
 export const bookingRouter = Router()
@@ -140,4 +141,23 @@ bookingRouter.delete('/:id', requireRole('admin', 'staff'), async (req, res) => 
   await deleteBooking(req.params.id)
   await deleteEvent(req.params.id, req.user.email, req.body?.cancellationReason)
   res.status(204).end()
+})
+
+// Pre/post-event readiness checklist. Both admin and staff - same access as
+// editing the booking itself. The checklist works on past events too (unlike
+// the booking form), so the closeout items can be ticked after the function.
+bookingRouter.get('/:id/checklist', requireRole('admin', 'staff'), async (req, res) => {
+  try {
+    res.json(await getChecklist(req.params.id))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+bookingRouter.put('/:id/checklist', requireRole('admin', 'staff'), async (req, res) => {
+  try {
+    res.json(await saveChecks(req.params.id, req.body?.items, req.user.email))
+  } catch (err) {
+    res.status(err.code === 'BAD_REQUEST' ? 400 : 500).json({ error: err.message })
+  }
 })

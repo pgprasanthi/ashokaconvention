@@ -254,6 +254,51 @@ main{flex:1}
 .booking-step-tabs .booking-step-tab:hover{color:#475569;background:none;box-shadow:none;transform:none}
 .booking-step-tabs .booking-step-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
+/* ── Pre/post-event checklist (edit modal tab) ── */
+.checklist-panel{margin-top:12px;display:flex;flex-direction:column;gap:14px}
+.checklist-loading{margin:16px 0;color:#64748b;font-size:0.9rem}
+.checklist-group{border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+/* Beats the generic ".team-form button" teal-fill rule - this is a header
+   bar, not a button. */
+.checklist-panel .checklist-group-header{
+  width:100%;display:flex;align-items:center;justify-content:space-between;
+  padding:10px 12px;background:#f8fafc;border:none;box-shadow:none;border-radius:0;
+  font-size:0.82rem;font-weight:700;color:#334155;cursor:pointer;
+}
+.checklist-panel .checklist-group-header:hover{background:#f1f5f9;transform:none;box-shadow:none}
+.checklist-progress{
+  font-size:0.75rem;font-weight:700;color:#64748b;
+  background:#e2e8f0;border-radius:999px;padding:2px 8px;
+}
+.checklist-progress.complete{background:#dcfce7;color:#166534}
+.checklist-items{list-style:none;margin:0;padding:0}
+.checklist-row{
+  display:flex;flex-direction:column;gap:6px;
+  padding:10px 12px;border-top:1px solid #eef2f6;
+}
+.checklist-row.status-done{background:#f6fdf9}
+.checklist-row.status-na{background:#f8fafc}
+.checklist-row-main{display:flex;align-items:center;gap:10px}
+.checklist-label{flex:1;font-size:0.85rem;font-weight:600;color:#334155}
+.checklist-row.status-na .checklist-label{color:#94a3b8;text-decoration:line-through}
+.checklist-status{
+  flex:0 0 auto;font-size:0.8rem;padding:4px 6px;
+  border:1px solid #cbd5e1;border-radius:6px;background:white;color:#334155;
+}
+.checklist-note{
+  width:100%;font-size:0.8rem;padding:6px 8px;
+  border:1px solid #e2e8f0;border-radius:6px;color:#334155;
+}
+.checklist-meta{margin:0;font-size:0.7rem;color:#94a3b8}
+
+/* ── Payment reminders page ── */
+.reminder-sub{font-size:0.75rem;color:#94a3b8;font-weight:400}
+.reminder-overdue td{background:#fef2f2}
+.reminder-badge{
+  display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;
+  background:#fee2e2;color:#b91c1c;font-size:0.68rem;font-weight:700;
+}
+
 /* ── Guest landing ── */
 .guest-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}
 .guest-link-btn{

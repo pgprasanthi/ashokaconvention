@@ -5,6 +5,7 @@ import { enUS } from 'date-fns/locale'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import { useAuth } from '../context/AuthContext'
 import { downloadCSV } from '../utils/csv'
+import ChecklistPanel from './ChecklistPanel'
 
 // Relative path in production - see AuthContext.jsx for why (same-origin
 // cookie via Render's rewrite proxy, avoids third-party cookie blocking).
@@ -25,6 +26,11 @@ const STEPS = [
   { id: 'customer', label: '2. Customer' },
   { id: 'payment', label: '3. Payment' }
 ]
+// Edit mode only: the pre/post-event checklist lives one step past the wizard
+// steps. It's not part of the booking form (own Save button, own data) and
+// stays usable on past events, so it's deliberately outside STEPS and the
+// disabled fieldset below.
+const CHECKLIST_STEP = STEPS.length
 
 const localizer = dateFnsLocalizer({
   format,
@@ -285,7 +291,7 @@ export default function BookingsCalendar() {
     // changed, or a second one landing while the first is still in flight
     // (which is exactly how the same edit ended up in event_history several
     // times in a row a few seconds apart).
-    if (!isDirty || saving || pastBooking) return
+    if (!isDirty || saving || pastBooking || currentStep === CHECKLIST_STEP) return
     setError('')
     // Steps other than the current one aren't in the DOM, so the browser's
     // native `required` validation only ever sees whichever step is showing.
@@ -432,7 +438,7 @@ export default function BookingsCalendar() {
             )}
             {pastBooking && (
               <p className="booking-incomplete-warning">
-                🔒 This event's date has already passed - past bookings can't be edited.
+                🔒 This event's date has already passed - booking details can't be edited. The Checklist tab is still open for post-event closeout.
               </p>
             )}
 
@@ -447,9 +453,26 @@ export default function BookingsCalendar() {
                   {step.label}
                 </button>
               ))}
+              {formMode === 'edit' && (
+                <button
+                  type="button"
+                  className={`booking-step-tab${currentStep === CHECKLIST_STEP ? ' active' : ''}`}
+                  onClick={() => goToStep(CHECKLIST_STEP)}
+                >
+                  4. Checklist
+                </button>
+              )}
             </div>
 
-            <fieldset className="booking-fieldset" disabled={pastBooking}>
+            {currentStep === CHECKLIST_STEP && (
+              <ChecklistPanel eventId={editingId} eventStart={form.start} />
+            )}
+
+            <fieldset
+              className="booking-fieldset"
+              hidden={currentStep === CHECKLIST_STEP}
+              disabled={pastBooking}
+            >
             {currentStep === 0 && (
               <div className="booking-modal-grid">
                 <label className="booking-field booking-field-full">
@@ -666,7 +689,7 @@ export default function BookingsCalendar() {
               {currentStep < STEPS.length - 1 && (
                 <button type="button" className="booking-step-nav-btn" onClick={nextStep}>Next →</button>
               )}
-              {!pastBooking && (
+              {!pastBooking && currentStep !== CHECKLIST_STEP && (
                 <button type="submit" className="booking-save-btn" disabled={!isDirty || saving} title={!isDirty ? 'No changes to save yet' : undefined}>
                   {saving ? 'Saving…' : 'Save'}
                 </button>

@@ -11,7 +11,9 @@ const EMPTY_FORM = {
   whatsapp_away_text: '',
   whatsapp_menu_availability_text: '',
   whatsapp_menu_booking_text: '',
-  whatsapp_menu_inquiry_text: ''
+  whatsapp_menu_inquiry_text: '',
+  payment_reminder_text: '',
+  payment_reminder_days_before: '2'
 }
 
 export default function WhatsAppSettings() {
@@ -34,7 +36,9 @@ export default function WhatsAppSettings() {
           whatsapp_away_text: data.whatsapp_away_text || '',
           whatsapp_menu_availability_text: data.whatsapp_menu_availability_text || '',
           whatsapp_menu_booking_text: data.whatsapp_menu_booking_text || '',
-          whatsapp_menu_inquiry_text: data.whatsapp_menu_inquiry_text || ''
+          whatsapp_menu_inquiry_text: data.whatsapp_menu_inquiry_text || '',
+          payment_reminder_text: data.payment_reminder_text || '',
+          payment_reminder_days_before: data.payment_reminder_days_before || '2'
         })
       } catch (err) {
         setError(err.message)
@@ -146,6 +150,32 @@ export default function WhatsAppSettings() {
             placeholder="Our team is currently away. We'll respond as soon as possible."
             value={form.whatsapp_away_text}
             onChange={(e) => setForm({ ...form, whatsapp_away_text: e.target.value })}
+          />
+        </label>
+
+        <hr className="admin-divider" />
+
+        <h3 className="booking-field-full">Payment reminders</h3>
+        <p className="booking-field-full whatsapp-menu-hint">
+          Shown on the <strong>Payments</strong> page for staff to review and send when a booking's
+          balance is due. Placeholders: <code>{'{name}'}</code> <code>{'{event}'}</code> <code>{'{hall}'}</code> <code>{'{date}'}</code> <code>{'{due_date}'}</code> <code>{'{balance}'}</code> <code>{'{amount_paid}'}</code> <code>{'{committed}'}</code>.
+        </p>
+        <label className="booking-field booking-field-full">
+          Reminder message
+          <textarea
+            rows={3}
+            value={form.payment_reminder_text}
+            onChange={(e) => setForm({ ...form, payment_reminder_text: e.target.value })}
+          />
+        </label>
+        <label className="booking-field">
+          Show a due payment this many days early
+          <input
+            type="number"
+            min={0}
+            max={30}
+            value={form.payment_reminder_days_before}
+            onChange={(e) => setForm({ ...form, payment_reminder_days_before: e.target.value })}
           />
         </label>
 
