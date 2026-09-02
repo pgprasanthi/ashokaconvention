@@ -193,8 +193,8 @@ export default function LeadsInbox() {
       )}
 
       {lostModalPhone && (
-        <div className="booking-modal-overlay">
-          <form className="team-form booking-modal" onSubmit={confirmMarkNotClosed}>
+        <div className="booking-modal-overlay" onClick={closeLostModal}>
+          <form className="team-form booking-modal" onSubmit={confirmMarkNotClosed} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="booking-modal-close" onClick={closeLostModal} aria-label="Close">✕</button>
             <h4>Mark Not Closed</h4>
             <p className="booking-incomplete-warning">
@@ -227,8 +227,8 @@ export default function LeadsInbox() {
       )}
 
       {messagesPhone && (
-        <div className="booking-modal-overlay">
-          <div className="team-form booking-modal">
+        <div className="booking-modal-overlay" onClick={closeMessages}>
+          <div className="team-form booking-modal" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="booking-modal-close" onClick={closeMessages} aria-label="Close">✕</button>
             <h4>Conversation — {messagesPhone}</h4>
             {messagesLoading ? (

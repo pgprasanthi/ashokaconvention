@@ -134,8 +134,8 @@ export default function PaymentReminders() {
       )}
 
       {active && (
-        <div className="booking-modal-overlay">
-          <form className="team-form booking-modal" onSubmit={send}>
+        <div className="booking-modal-overlay" onClick={closeSend}>
+          <form className="team-form booking-modal" onSubmit={send} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="booking-modal-close" onClick={closeSend} aria-label="Close">✕</button>
             <h4>Send payment reminder</h4>
             <p className="reminder-sub">

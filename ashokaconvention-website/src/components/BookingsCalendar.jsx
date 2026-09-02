@@ -426,8 +426,8 @@ export default function BookingsCalendar() {
       )}
 
       {formMode && (
-        <div className="booking-modal-overlay">
-          <form ref={modalRef} className="team-form booking-modal" onSubmit={handleSubmit}>
+        <div className="booking-modal-overlay" onClick={closeForm}>
+          <form ref={modalRef} className="team-form booking-modal" onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="booking-modal-close" onClick={closeForm} aria-label="Close">✕</button>
             <h4>{formMode === 'edit' ? 'Edit Booking' : 'New Booking'}</h4>
             {error && <p className="team-error">{error}</p>}
