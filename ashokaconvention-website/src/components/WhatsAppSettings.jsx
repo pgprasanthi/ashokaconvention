@@ -158,7 +158,7 @@ export default function WhatsAppSettings() {
         <h3 className="booking-field-full">Payment reminders</h3>
         <p className="booking-field-full whatsapp-menu-hint">
           Shown on the <strong>Payments</strong> page for staff to review and send when a booking's
-          balance is due. Placeholders: <code>{'{name}'}</code> <code>{'{event}'}</code> <code>{'{hall}'}</code> <code>{'{date}'}</code> <code>{'{due_date}'}</code> <code>{'{balance}'}</code> <code>{'{amount_paid}'}</code> <code>{'{committed}'}</code>.
+          balance is due (one reminder per payment type - hall rent, catering, decor, etc). Placeholders: <code>{'{name}'}</code> <code>{'{event}'}</code> <code>{'{hall}'}</code> <code>{'{date}'}</code> <code>{'{payment_type}'}</code> <code>{'{due_date}'}</code> <code>{'{balance}'}</code> <code>{'{amount_paid}'}</code> <code>{'{committed}'}</code>.
         </p>
         <label className="booking-field booking-field-full">
           Reminder message

@@ -1,46 +1,37 @@
-import { query, ensureSchema, toNullIfBlank, dateToISODate, dateToISOString } from './db.js'
+import { query, ensureSchema, toNullIfBlank, dateToISODate, dateToISOString, withTransaction } from './db.js'
 import { appendHistory } from './eventHistory.js'
+import { findOrCreateCustomer } from './customers.js'
+import { upsertPayment, listPaymentsForEvent, listPaymentsForEvents } from './payments.js'
 
 // Postgres error code 23505 = unique_violation. Translates the DB-level
-// constraint error (customer mobile + hall + booking date already booked)
-// into something bookingRoutes.js already knows how to surface as a 409,
-// same as the Calendar hall-conflict check.
+// constraint error (customer + hall + booking date already booked) into
+// something bookingRoutes.js already knows how to surface as a 409, same as
+// the Calendar hall-conflict check.
 function duplicateBookingError(err) {
-  if (err.code !== '23505' || err.constraint !== 'events_mobile_hall_date_unique') return err
+  if (err.code !== '23505' || err.constraint !== 'events_customer_hall_date_unique') return err
   const dupError = new Error('This customer already has a booking for this hall on this date')
   dupError.code = 'CONFLICT'
   return dupError
 }
 
-// Balance is always derived, never entered directly - keeps it impossible
-// for the two to drift out of sync regardless of how a request is made
-// (UI, or a direct API call). Blank if either side of the sum is unknown.
-function computeBalance(committedAmount, amountPaid) {
-  const committed = Number(committedAmount)
-  const paid = Number(amountPaid)
-  if (!Number.isFinite(committed) || !Number.isFinite(paid)) return ''
-  return String(committed - paid)
+// Sums a numeric field across a payment type's line items, e.g. total
+// committed / total paid / total balance across hall rent + catering +
+// decor etc. Blank if none of the line items have a value for it yet.
+function sumField(payments, field) {
+  const nums = payments.map((p) => Number(p[field])).filter(Number.isFinite)
+  if (!nums.length) return ''
+  return String(nums.reduce((a, b) => a + b, 0))
 }
 
-// fullyPaid is likewise derived, not a manually-set flag - it's true exactly
-// when the balance hits zero, never toggled directly by a caller.
-function computeFullyPaid(committedAmount, amountPaid) {
-  const balance = computeBalance(committedAmount, amountPaid)
-  return balance !== '' && Number(balance) === 0
-}
-
-function rowToEvent(row) {
+function rowToEvent(row, payments) {
   return {
     eventId: row.event_id,
+    customerId: row.customer_id,
     bookingDate: dateToISODate(row.booking_date),
-    amountPaid: row.amount_paid ?? '',
-    balance: row.balance ?? '',
-    paymentDate: dateToISODate(row.payment_date),
     customerName: row.customer_name,
     customerEmail: row.customer_email,
     customerMobile: row.customer_mobile,
     customerAddress: row.customer_address,
-    fullyPaid: row.fully_paid,
     createdBy: row.created_by,
     createdDate: dateToISOString(row.created_date),
     updatedDate: dateToISOString(row.updated_date),
@@ -50,19 +41,33 @@ function rowToEvent(row) {
     eventName: row.event_name,
     eventType: row.event_type,
     referredBy: row.referred_by,
-    committedAmount: row.committed_amount ?? '',
     closedBy: row.closed_by,
     guestCount: row.guest_count ?? '',
-    paymentDueDate: dateToISODate(row.payment_due_date),
     cancellationReason: row.cancellation_reason,
-    notes: row.notes
+    notes: row.notes,
+    // Per-payment-type detail (hall rent, catering, decor, ...), each with
+    // its own committed amount and balance - see payments.js.
+    payments,
+    // Totals across every payment type, for callers that just want "the"
+    // numbers (reports, CSV overview, the calendar list) without caring
+    // about the breakdown.
+    committedAmount: sumField(payments, 'committedAmount'),
+    amountPaid: sumField(payments, 'amountPaid'),
+    balance: sumField(payments, 'balance'),
+    fullyPaid: payments.length > 0 && payments.every((p) => p.fullyPaid)
   }
 }
 
+const CUSTOMER_JOIN_SELECT = `
+  SELECT e.*, c.name AS customer_name, c.email AS customer_email, c.mobile AS customer_mobile, c.address AS customer_address
+  FROM events e JOIN customers c ON c.id = e.customer_id
+`
+
 async function fetchEvents() {
   await ensureSchema()
-  const { rows } = await query('SELECT * FROM events ORDER BY created_date ASC')
-  return rows.map(rowToEvent)
+  const { rows } = await query(`${CUSTOMER_JOIN_SELECT} ORDER BY e.created_date ASC`)
+  const paymentsByEvent = await listPaymentsForEvents(query, rows.map((r) => r.event_id))
+  return rows.map((row) => rowToEvent(row, paymentsByEvent.get(row.event_id) || []))
 }
 
 export async function listEvents() {
@@ -70,69 +75,83 @@ export async function listEvents() {
   return events.filter((e) => !e.deleted)
 }
 
-// eventId is the linked Google Calendar event id.
+// eventId is the linked Google Calendar event id. `payments` is the list of
+// initial payment line items (usually just one - hall rent - from the
+// booking form's Payment step): [{ paymentType, committedAmount, amountPaid,
+// paymentDate, paymentDueDate, notes }].
 export async function createEvent({
-  eventId, bookingDate, amountPaid, paymentDate, customerName, customerEmail, customerMobile, customerAddress,
-  hall, eventName, eventType, referredBy, committedAmount, closedBy, guestCount, paymentDueDate, notes, actor
+  eventId, bookingDate, customerName, customerEmail, customerMobile, customerAddress,
+  hall, eventName, eventType, referredBy, closedBy, guestCount, notes, payments, actor
 }) {
   await ensureSchema()
   const now = new Date().toISOString()
-  const balance = computeBalance(committedAmount, amountPaid)
-  const fullyPaid = computeFullyPaid(committedAmount, amountPaid)
+  const paymentInputs = payments?.length ? payments : [{ paymentType: 'hall_rent' }]
+
+  let savedPayments
   try {
-    await query(
-      `INSERT INTO events (
-         event_id, booking_date, amount_paid, balance, payment_date, customer_name, customer_email, customer_mobile, customer_address,
-         fully_paid, created_by, created_date, updated_date, updated_by, deleted, hall,
-         event_name, event_type, referred_by, committed_amount, closed_by, guest_count, payment_due_date, notes
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $11, FALSE, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-      [
-        eventId, toNullIfBlank(bookingDate), toNullIfBlank(amountPaid), toNullIfBlank(balance), toNullIfBlank(paymentDate),
-        customerName || '', customerEmail || '', customerMobile || '', customerAddress || '', Boolean(fullyPaid), actor, now, hall || '',
-        eventName || '', eventType || '', referredBy || '', toNullIfBlank(committedAmount), closedBy || '', toNullIfBlank(guestCount), toNullIfBlank(paymentDueDate), notes || ''
-      ]
-    )
+    savedPayments = await withTransaction(async (client) => {
+      const customerId = await findOrCreateCustomer(client, {
+        name: customerName, email: customerEmail, mobile: customerMobile, address: customerAddress
+      })
+      await client.query(
+        `INSERT INTO events (
+           event_id, customer_id, booking_date, created_by, created_date, updated_date, updated_by, deleted,
+           hall, event_name, event_type, referred_by, closed_by, guest_count, notes
+         )
+         VALUES ($1, $2, $3, $4, $5, $5, $4, FALSE, $6, $7, $8, $9, $10, $11, $12)`,
+        [
+          eventId, customerId, toNullIfBlank(bookingDate), actor, now, hall || '', eventName || '',
+          eventType || '', referredBy || '', closedBy || '', toNullIfBlank(guestCount), notes || ''
+        ]
+      )
+      const saved = []
+      for (const p of paymentInputs) {
+        saved.push(await upsertPayment(client, {
+          eventId, customerId, paymentType: p.paymentType || 'hall_rent',
+          committedAmount: p.committedAmount, amountPaid: p.amountPaid,
+          paymentDate: p.paymentDate, paymentDueDate: p.paymentDueDate, notes: p.notes, actor
+        }))
+      }
+      return saved
+    })
   } catch (err) {
     throw duplicateBookingError(err)
   }
+
   const event = {
-    eventId, bookingDate: bookingDate || '', amountPaid: amountPaid || '', balance, paymentDate: paymentDate || '',
-    customerName: customerName || '', customerEmail: customerEmail || '', customerMobile: customerMobile || '', customerAddress: customerAddress || '',
-    fullyPaid: Boolean(fullyPaid), createdBy: actor, createdDate: now, updatedDate: now, updatedBy: actor, deleted: false, hall: hall || '',
-    eventName: eventName || '', eventType: eventType || '', referredBy: referredBy || '', committedAmount: committedAmount || '', closedBy: closedBy || '',
-    guestCount: guestCount || '', paymentDueDate: paymentDueDate || '', cancellationReason: '', notes: notes || ''
+    eventId, bookingDate: bookingDate || '', customerName: customerName || '', customerEmail: customerEmail || '',
+    customerMobile: customerMobile || '', customerAddress: customerAddress || '', createdBy: actor, createdDate: now,
+    updatedDate: now, updatedBy: actor, deleted: false, hall: hall || '', eventName: eventName || '',
+    eventType: eventType || '', referredBy: referredBy || '', closedBy: closedBy || '', guestCount: guestCount || '',
+    cancellationReason: '', notes: notes || '', payments: savedPayments,
+    committedAmount: sumField(savedPayments, 'committedAmount'), amountPaid: sumField(savedPayments, 'amountPaid'),
+    balance: sumField(savedPayments, 'balance'), fullyPaid: savedPayments.every((p) => p.fullyPaid)
   }
-  await appendHistory({ ...event, action: 'created', actor })
+  for (const p of savedPayments) {
+    await appendHistory({ ...event, ...p, action: 'created', actor })
+  }
   return event
 }
 
-// Once an event is saved with fullyPaid, its payment fields (amount paid,
-// balance, payment date, committed amount, payment due date, and the flag
-// itself) are locked - a caller can still update booking/customer details,
-// but payment changes are silently ignored rather than applied, enforced
-// here so it can't be bypassed by calling the API directly.
+// Once a payment line item is saved fully paid, ITS payment fields (amount
+// paid, balance, payment date, committed amount, payment due date, fully
+// paid) lock - enforced in payments.js's upsertPayment, per type
+// independently. Booking/customer details stay editable regardless.
+// `payments` (optional) is the list of payment type changes to apply:
+// [{ paymentType, committedAmount, amountPaid, paymentDate, paymentDueDate, notes }].
 export async function updateEvent(eventId, {
-  bookingDate, amountPaid, paymentDate, customerName, customerEmail, customerMobile, customerAddress,
-  hall, eventName, eventType, referredBy, committedAmount, closedBy, guestCount, paymentDueDate, notes, actor
+  bookingDate, customerName, customerEmail, customerMobile, customerAddress,
+  hall, eventName, eventType, referredBy, closedBy, guestCount, notes, payments, actor
 }) {
   await ensureSchema()
-  const { rows } = await query('SELECT * FROM events WHERE event_id = $1', [eventId])
+  const { rows } = await query(`${CUSTOMER_JOIN_SELECT} WHERE e.event_id = $1`, [eventId])
   if (!rows[0]) throw new Error('Event not found')
-  const existing = rowToEvent(rows[0])
+  const existingPayments = await listPaymentsForEvent(query, eventId)
+  const existing = rowToEvent(rows[0], existingPayments)
 
-  const paymentLocked = existing.fullyPaid
-  const mergedAmountPaid = paymentLocked ? existing.amountPaid : (amountPaid ?? existing.amountPaid)
-  const mergedCommittedAmount = paymentLocked ? existing.committedAmount : (committedAmount ?? existing.committedAmount)
   const merged = {
     ...existing,
     bookingDate: bookingDate ?? existing.bookingDate,
-    amountPaid: mergedAmountPaid,
-    balance: paymentLocked ? existing.balance : computeBalance(mergedCommittedAmount, mergedAmountPaid),
-    paymentDate: paymentLocked ? existing.paymentDate : (paymentDate ?? existing.paymentDate),
-    fullyPaid: paymentLocked ? existing.fullyPaid : computeFullyPaid(mergedCommittedAmount, mergedAmountPaid),
-    committedAmount: mergedCommittedAmount,
-    paymentDueDate: paymentLocked ? existing.paymentDueDate : (paymentDueDate ?? existing.paymentDueDate),
     customerName: customerName ?? existing.customerName,
     customerEmail: customerEmail ?? existing.customerEmail,
     customerMobile: customerMobile ?? existing.customerMobile,
@@ -147,29 +166,71 @@ export async function updateEvent(eventId, {
     updatedDate: new Date().toISOString(),
     updatedBy: actor
   }
+
+  let savedPayments
   try {
-    await query(
-      `UPDATE events SET booking_date = $1, amount_paid = $2, balance = $3, payment_date = $4, customer_name = $5,
-         customer_email = $6, customer_mobile = $7, customer_address = $8, fully_paid = $9, updated_date = $10, updated_by = $11, hall = $12,
-         event_name = $13, event_type = $14, referred_by = $15, committed_amount = $16, closed_by = $17, guest_count = $18, payment_due_date = $19, notes = $20
-       WHERE event_id = $21`,
-      [
-        toNullIfBlank(merged.bookingDate), toNullIfBlank(merged.amountPaid), toNullIfBlank(merged.balance), toNullIfBlank(merged.paymentDate),
-        merged.customerName, merged.customerEmail, merged.customerMobile, merged.customerAddress, merged.fullyPaid, merged.updatedDate, merged.updatedBy, merged.hall,
-        merged.eventName, merged.eventType, merged.referredBy, toNullIfBlank(merged.committedAmount), merged.closedBy, toNullIfBlank(merged.guestCount), toNullIfBlank(merged.paymentDueDate), merged.notes,
-        eventId
-      ]
-    )
+    savedPayments = await withTransaction(async (client) => {
+      // Customer fields are only ever editable while a booking is still
+      // "incomplete" (see BookingsCalendar.jsx) - so this only actually
+      // resolves a different customer_id when filling in a booking that had
+      // none yet, not on an ordinary edit.
+      let customerId = rows[0].customer_id
+      if (customerName !== undefined || customerMobile !== undefined) {
+        customerId = await findOrCreateCustomer(client, {
+          name: merged.customerName, email: merged.customerEmail, mobile: merged.customerMobile, address: merged.customerAddress
+        })
+      }
+      await client.query(
+        `UPDATE events SET customer_id = $1, booking_date = $2, updated_date = $3, updated_by = $4, hall = $5,
+           event_name = $6, event_type = $7, referred_by = $8, closed_by = $9, guest_count = $10, notes = $11
+         WHERE event_id = $12`,
+        [
+          customerId, toNullIfBlank(merged.bookingDate), merged.updatedDate, merged.updatedBy, merged.hall,
+          merged.eventName, merged.eventType, merged.referredBy, merged.closedBy, toNullIfBlank(merged.guestCount),
+          merged.notes, eventId
+        ]
+      )
+      const saved = []
+      for (const p of (payments || [])) {
+        saved.push(await upsertPayment(client, {
+          eventId, customerId, paymentType: p.paymentType,
+          committedAmount: p.committedAmount, amountPaid: p.amountPaid,
+          paymentDate: p.paymentDate, paymentDueDate: p.paymentDueDate, notes: p.notes, actor
+        }))
+      }
+      return saved
+    })
   } catch (err) {
     throw duplicateBookingError(err)
   }
-  // events.amount_paid is the running cumulative total (correct - each
-  // update adds to what's already on record), but the audit log should
-  // capture what actually happened IN THIS transaction, not the total after
-  // it - so this row logs just the difference from the last recorded total,
-  // not the new cumulative figure.
-  const paidThisTime = Number(merged.amountPaid || 0) - Number(existing.amountPaid || 0)
-  await appendHistory({ ...merged, amountPaid: String(paidThisTime), action: 'updated', actor })
+
+  // Merge the freshly-saved payment types back into the full list (unsaved
+  // types on this event are untouched, so keep their prior state).
+  const savedByType = new Map(savedPayments.map((p) => [p.paymentType, p]))
+  merged.payments = existingPayments.map((p) => savedByType.get(p.paymentType) || p)
+  for (const p of savedPayments) {
+    if (!merged.payments.some((existingP) => existingP.paymentType === p.paymentType)) merged.payments.push(p)
+  }
+  merged.committedAmount = sumField(merged.payments, 'committedAmount')
+  merged.amountPaid = sumField(merged.payments, 'amountPaid')
+  merged.balance = sumField(merged.payments, 'balance')
+  merged.fullyPaid = merged.payments.length > 0 && merged.payments.every((p) => p.fullyPaid)
+
+  if (savedPayments.length) {
+    // events.amount_paid per type is the running cumulative total (correct -
+    // each update adds to what's already on record), but the audit log
+    // should capture what actually happened IN THIS transaction, not the
+    // total after it - so this row logs just the difference from the last
+    // recorded total for that payment type, not the new cumulative figure.
+    for (const p of savedPayments) {
+      const before = existingPayments.find((ep) => ep.paymentType === p.paymentType)
+      const paidThisTime = Number(p.amountPaid || 0) - Number(before?.amountPaid || 0)
+      await appendHistory({ ...merged, ...p, amountPaid: String(paidThisTime), action: 'updated', actor })
+    }
+  } else {
+    // Pure event/customer edit - no payment line item changed.
+    await appendHistory({ ...merged, paymentType: '', amountPaid: '0', balance: '', fullyPaid: false, action: 'updated', actor })
+  }
   return merged
 }
 
@@ -179,9 +240,10 @@ export async function updateEvent(eventId, {
 // via bookings.js) so the calendar slot frees up.
 export async function deleteEvent(eventId, actor, cancellationReason) {
   await ensureSchema()
-  const { rows } = await query('SELECT * FROM events WHERE event_id = $1', [eventId])
+  const { rows } = await query(`${CUSTOMER_JOIN_SELECT} WHERE e.event_id = $1`, [eventId])
   if (!rows[0]) return
-  const existing = rowToEvent(rows[0])
+  const payments = await listPaymentsForEvent(query, eventId)
+  const existing = rowToEvent(rows[0], payments)
 
   const updatedDate = new Date().toISOString()
   await query(
@@ -193,5 +255,5 @@ export async function deleteEvent(eventId, actor, cancellationReason) {
   // No payment happens on cancellation - log 0 for this transaction, same
   // "amount paid THIS action" principle as updateEvent above, not whatever
   // cumulative total happened to be on record at the time.
-  await appendHistory({ ...merged, amountPaid: '0', action: 'deleted', actor })
+  await appendHistory({ ...merged, paymentType: '', amountPaid: '0', action: 'deleted', actor })
 }

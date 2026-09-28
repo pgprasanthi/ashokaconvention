@@ -14,11 +14,20 @@ const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://l
 const CANCELLATION_ENABLED = false
 const HALLS = ['Ashok Palace', 'Convention Center', 'Banquet Hall']
 const EVENT_TYPES = ['Wedding', 'Engagement', 'Birthday', 'Reception', 'Corporate Event', 'Anniversary', 'Other']
+// Mirrors server/paymentTypes.js - keep both lists in sync when adding a type.
+const PAYMENT_TYPES = ['hall_rent', 'catering', 'decor', 'advance', 'other']
+const PAYMENT_TYPE_LABELS = {
+  hall_rent: 'Hall Rent', catering: 'Catering', decor: 'Decor', advance: 'Advance', other: 'Other'
+}
+const EMPTY_PAYMENT_ROW = {
+  paymentType: 'hall_rent', committedAmount: '', amountPaid: '', paymentIncrement: '',
+  paymentDate: '', paymentDueDate: '', fullyPaid: false, isExisting: false
+}
 const EMPTY_FORM = {
   title: '', description: '', start: '', end: '', hall: '', eventType: '',
   customerName: '', customerEmail: '', customerMobile: '', customerAddress: '',
   referredBy: '', guestCount: '', closedBy: '',
-  amountPaid: '', paymentDate: '', committedAmount: '', paymentDueDate: ''
+  payments: [EMPTY_PAYMENT_ROW]
 }
 
 const STEPS = [
@@ -90,15 +99,9 @@ export default function BookingsCalendar() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [editingIncomplete, setEditingIncomplete] = useState(false)
-  const [paymentLocked, setPaymentLocked] = useState(false)
   const [pastBooking, setPastBooking] = useState(false)
   const [hallFilter, setHallFilter] = useState('all')
   const [currentStep, setCurrentStep] = useState(0)
-  // Edit mode only: how much the customer is paying in THIS visit, separate
-  // from form.amountPaid (which holds the running cumulative total already
-  // on record) - the two get added together on save. New bookings don't use
-  // this at all, since the first payment IS the cumulative total.
-  const [paymentIncrement, setPaymentIncrement] = useState('')
   // Snapshot of the form exactly as it was when the modal opened, so Save
   // can be disabled until something actually differs from it - and a
   // separate in-flight flag, so rapid re-clicking can't fire duplicate
@@ -108,31 +111,55 @@ export default function BookingsCalendar() {
   const [saving, setSaving] = useState(false)
   const modalRef = useRef(null)
 
-  const isDirty = paymentIncrement !== '' || JSON.stringify(form) !== JSON.stringify(originalForm)
+  const isDirty = JSON.stringify(form) !== JSON.stringify(originalForm)
 
   // Which step a given required field lives on, so a missing field can
   // point the user at the right step instead of just a generic error.
   const stepIsValid = (step) => {
     if (step === 0) return form.title && form.hall && form.start && form.end
     if (step === 1) return form.customerName && form.customerMobile
-    if (step === 2) return (formMode === 'edit' && !editingIncomplete) || form.amountPaid
+    // A brand-new payment type row (isExisting false - either the whole
+    // booking is new, or it's an existing "incomplete" one, or the user just
+    // added an extra charge type) needs its starting amount paid filled in.
+    // An existing, already-saved row never blocks Save - topping it up this
+    // visit is optional.
+    if (step === 2) return form.payments.length > 0 && form.payments.every((p) => p.isExisting || p.amountPaid !== '')
     return true
   }
 
-  // In edit mode, the amount that will actually get saved is the existing
-  // total plus whatever's being paid in this visit - previewing with that
-  // combined figure keeps Balance/Fully paid accurate before Save is clicked.
-  const effectiveAmountPaid = formMode === 'edit'
-    ? String(Number(form.amountPaid || 0) + Number(paymentIncrement || 0))
-    : form.amountPaid
+  // In edit mode, the amount that will actually get saved for an existing
+  // payment row is its recorded total plus whatever's being paid in this
+  // visit - previewing with that combined figure keeps Balance/Fully paid
+  // accurate before Save is clicked. A brand-new row's amountPaid IS the
+  // total (nothing to add it to yet).
+  const effectiveAmountPaid = (p) => (
+    p.isExisting ? String(Number(p.amountPaid || 0) + Number(p.paymentIncrement || 0)) : p.amountPaid
+  )
 
   // Both derived the same way the backend derives them - never set
   // directly, so the "fully paid" state can't drift from the numbers or be
   // toggled by hand.
-  const computedBalance = form.committedAmount !== '' && effectiveAmountPaid !== ''
-    ? Number(form.committedAmount) - Number(effectiveAmountPaid)
-    : null
-  const isFullyPaid = computedBalance === 0
+  const paymentBalance = (p) => {
+    const paid = effectiveAmountPaid(p)
+    return p.committedAmount !== '' && paid !== '' ? Number(p.committedAmount) - Number(paid) : null
+  }
+
+  const updatePaymentRow = (index, changes) => {
+    setForm({
+      ...form,
+      payments: form.payments.map((p, i) => (i === index ? { ...p, ...changes } : p))
+    })
+  }
+
+  const addPaymentRow = () => {
+    const usedTypes = new Set(form.payments.map((p) => p.paymentType))
+    const nextType = PAYMENT_TYPES.find((t) => !usedTypes.has(t))
+    if (!nextType) return
+    setForm({
+      ...form,
+      payments: [...form.payments, { ...EMPTY_PAYMENT_ROW, paymentType: nextType, paymentDate: todayISO(), paymentDueDate: todayISO() }]
+    })
+  }
 
   // While the modal is open: lock background scroll and keep keyboard focus
   // (including Tab cycling) inside it.
@@ -209,7 +236,6 @@ export default function BookingsCalendar() {
     setEditingId(null)
     setPastBooking(false)
     setCurrentStep(0)
-    setPaymentIncrement('')
     const initial = {
       ...EMPTY_FORM,
       start: toLocalInput(slotInfo.start),
@@ -217,8 +243,7 @@ export default function BookingsCalendar() {
       hall: hallFilter === 'all' ? '' : hallFilter,
       // Defaults to today, editable afterward - saves re-typing the date on
       // every new booking when it's almost always today anyway.
-      paymentDate: todayISO(),
-      paymentDueDate: todayISO()
+      payments: [{ ...EMPTY_PAYMENT_ROW, paymentDate: todayISO(), paymentDueDate: todayISO() }]
     }
     setForm(initial)
     setOriginalForm(initial)
@@ -229,11 +254,25 @@ export default function BookingsCalendar() {
     setFormMode('edit')
     setEditingId(event.id)
     setEditingIncomplete(event.resource.hasDetails === false)
-    setPaymentLocked(Boolean(event.resource.fullyPaid))
     setPastBooking(isPastDate(event.start))
     setCurrentStep(0)
-    setPaymentIncrement('')
     const b = event.resource
+    // Existing, already-saved payment line items (hall rent, catering, ...) -
+    // each keeps its own recorded total; this visit's payment, if any, is
+    // tracked separately per row via paymentIncrement (see effectiveAmountPaid).
+    const existingPayments = (b.payments || []).map((p) => ({
+      paymentType: p.paymentType,
+      committedAmount: p.committedAmount || '',
+      amountPaid: p.amountPaid || '',
+      paymentIncrement: '',
+      // Same "default to today, editable after" as a new booking - matters
+      // for a booking created outside the app, which has no payment dates
+      // on record at all until this edit becomes its first real save.
+      paymentDate: p.paymentDate || todayISO(),
+      paymentDueDate: p.paymentDueDate || todayISO(),
+      fullyPaid: Boolean(p.fullyPaid),
+      isExisting: true
+    }))
     const initial = {
       title: b.title,
       description: b.description,
@@ -248,13 +287,9 @@ export default function BookingsCalendar() {
       referredBy: b.referredBy || '',
       guestCount: b.guestCount || '',
       closedBy: b.closedBy || '',
-      amountPaid: b.amountPaid || '',
-      // Same "default to today, editable after" as a new booking - matters
-      // for a booking created outside the app, which has no payment dates
-      // on record at all until this edit becomes its first real save.
-      paymentDate: b.paymentDate || todayISO(),
-      committedAmount: b.committedAmount || '',
-      paymentDueDate: b.paymentDueDate || todayISO()
+      payments: existingPayments.length
+        ? existingPayments
+        : [{ ...EMPTY_PAYMENT_ROW, paymentDate: todayISO(), paymentDueDate: todayISO() }]
     }
     setForm(initial)
     setOriginalForm(initial)
@@ -264,10 +299,8 @@ export default function BookingsCalendar() {
     setFormMode(null)
     setEditingId(null)
     setEditingIncomplete(false)
-    setPaymentLocked(false)
     setPastBooking(false)
     setCurrentStep(0)
-    setPaymentIncrement('')
     setSaving(false)
     setForm(EMPTY_FORM)
     setOriginalForm(EMPTY_FORM)
@@ -318,10 +351,26 @@ export default function BookingsCalendar() {
       referredBy: form.referredBy,
       guestCount: form.guestCount,
       closedBy: form.closedBy,
-      amountPaid: effectiveAmountPaid,
-      paymentDate: form.paymentDate,
-      committedAmount: form.committedAmount,
-      paymentDueDate: form.paymentDueDate
+      // Only send a payment row that actually changed this visit - a new
+      // row (must be created), or an existing one with a new payment/date.
+      // Skipping untouched existing rows keeps event_history from getting a
+      // no-op entry for every payment type on every unrelated edit.
+      payments: form.payments
+        .filter((p) => {
+          if (!p.isExisting) return true
+          const orig = originalForm.payments.find((op) => op.paymentType === p.paymentType)
+          return (p.paymentIncrement || '') !== '' || p.paymentDate !== orig?.paymentDate || p.paymentDueDate !== orig?.paymentDueDate
+        })
+        .map((p) => ({
+          paymentType: p.paymentType,
+          // Committed amount can't be changed once a payment type is on
+          // record (only new rows set it) - omitting the key here (rather
+          // than sending the unchanged value) tells the backend not to touch it.
+          ...(p.isExisting ? {} : { committedAmount: p.committedAmount }),
+          amountPaid: effectiveAmountPaid(p),
+          paymentDate: p.paymentDate,
+          paymentDueDate: p.paymentDueDate
+        }))
     }
     setSaving(true)
     try {
@@ -363,24 +412,30 @@ export default function BookingsCalendar() {
 
   // Exports exactly what's currently on screen (respects the hall filter
   // above) - pulled from the calendar's own `events` list rather than
-  // re-fetching, since that data is already loaded.
+  // re-fetching, since that data is already loaded. One row per (booking,
+  // payment type) now that a booking can have several - hall rent, catering,
+  // decor, etc. - each with its own committed amount and balance.
   const downloadEventsCSV = () => {
     if (!isAdmin) return
     downloadCSV(
       `bookings_${hallFilter === 'all' ? 'all-halls' : hallFilter.replace(/\s+/g, '-').toLowerCase()}.csv`,
       [
         'Hall', 'Title', 'Event Type', 'Start', 'End', 'Customer Name', 'Mobile', 'Email', 'Address',
-        'Guest Count', 'Referred By', 'Closed By', 'Committed Amount', 'Amount Paid', 'Balance', 'Fully Paid',
+        'Guest Count', 'Referred By', 'Closed By', 'Payment Type', 'Committed Amount', 'Amount Paid', 'Balance', 'Fully Paid',
         'Payment Date', 'Payment Due Date', 'Notes', 'Created By', 'Created Date'
       ],
-      events.map(({ resource: b }) => [
-        b.hall || '', b.title || '', b.eventType || '', b.start, b.end,
-        b.customerName || '', b.customerMobile || '', b.customerEmail || '', b.customerAddress || '',
-        b.guestCount || '', b.referredBy || '', b.closedBy || '',
-        b.committedAmount || '', b.amountPaid || '', b.balance || '', b.fullyPaid ? 'Yes' : 'No',
-        b.paymentDate || '', b.paymentDueDate || '', b.notes || b.description || '',
-        b.createdBy || '', b.createdDate || ''
-      ])
+      events.flatMap(({ resource: b }) => {
+        const rows = b.payments?.length ? b.payments : [null]
+        return rows.map((p) => [
+          b.hall || '', b.title || '', b.eventType || '', b.start, b.end,
+          b.customerName || '', b.customerMobile || '', b.customerEmail || '', b.customerAddress || '',
+          b.guestCount || '', b.referredBy || '', b.closedBy || '',
+          p ? PAYMENT_TYPE_LABELS[p.paymentType] || p.paymentType : '',
+          p?.committedAmount || '', p?.amountPaid || '', p?.balance || '', p?.fullyPaid ? 'Yes' : 'No',
+          p?.paymentDate || '', p?.paymentDueDate || '', b.notes || b.description || '',
+          b.createdBy || '', b.createdDate || ''
+        ])
+      })
     )
   }
 
@@ -609,75 +664,101 @@ export default function BookingsCalendar() {
             )}
 
             {currentStep === 2 && (
-              <div className="booking-modal-grid">
-                {paymentLocked && <p className="booking-incomplete-warning booking-field-full">🔒 Payment details are locked because this booking is marked fully paid.</p>}
-                {/* A booking created outside the app (from a phone's calendar)
-                    has no committed amount or payment on record at all yet -
-                    same "first entry" fields as a new booking, not the
-                    increment field below, since there's no baseline to add to. */}
-                {(formMode !== 'edit' || editingIncomplete) && (
-                  <>
-                    <label className="booking-field booking-field-full">
-                      Total committed amount
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        disabled={paymentLocked}
-                        value={form.committedAmount}
-                        onChange={(e) => setForm({ ...form, committedAmount: numericOnly(e.target.value) })}
-                      />
-                    </label>
-                    <label className="booking-field booking-field-full">
-                      Amount paid *
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        required
-                        value={form.amountPaid}
-                        onChange={(e) => setForm({ ...form, amountPaid: numericOnly(e.target.value) })}
-                      />
-                    </label>
-                  </>
+              <div className="booking-payment-types">
+                {form.payments.map((p, i) => {
+                  const balance = paymentBalance(p)
+                  const fullyPaid = balance === 0
+                  const usedByOthers = new Set(form.payments.filter((_, j) => j !== i).map((row) => row.paymentType))
+                  return (
+                    <div className="booking-modal-grid booking-payment-row" key={i}>
+                      <label className="booking-field booking-field-full">
+                        Payment type
+                        <select
+                          disabled={p.isExisting}
+                          value={p.paymentType}
+                          onChange={(e) => updatePaymentRow(i, { paymentType: e.target.value })}
+                        >
+                          {PAYMENT_TYPES.filter((t) => t === p.paymentType || !usedByOthers.has(t)).map((t) => (
+                            <option key={t} value={t}>{PAYMENT_TYPE_LABELS[t]}</option>
+                          ))}
+                        </select>
+                      </label>
+                      {p.fullyPaid && <p className="booking-incomplete-warning booking-field-full">🔒 {PAYMENT_TYPE_LABELS[p.paymentType]} is locked because it's marked fully paid.</p>}
+                      {/* A brand-new row (a new booking, an "incomplete" booking's
+                          first save, or a payment type just added here) has no
+                          committed amount or payment on record at all yet - same
+                          "first entry" fields, not the increment field below,
+                          since there's no baseline to add to. */}
+                      {!p.isExisting && (
+                        <>
+                          <label className="booking-field booking-field-full">
+                            Committed amount
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={p.committedAmount}
+                              onChange={(e) => updatePaymentRow(i, { committedAmount: numericOnly(e.target.value) })}
+                            />
+                          </label>
+                          <label className="booking-field booking-field-full">
+                            Amount paid *
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              required
+                              value={p.amountPaid}
+                              onChange={(e) => updatePaymentRow(i, { amountPaid: numericOnly(e.target.value) })}
+                            />
+                          </label>
+                        </>
+                      )}
+                      {p.isExisting && (
+                        <label className="booking-field booking-field-full">
+                          Amount paid now
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            disabled={p.fullyPaid}
+                            placeholder="0"
+                            value={p.paymentIncrement}
+                            onChange={(e) => updatePaymentRow(i, { paymentIncrement: numericOnly(e.target.value) })}
+                          />
+                        </label>
+                      )}
+                      <div className="booking-field">
+                        Balance
+                        <p className="booking-computed-value">{balance !== null ? balance.toLocaleString() : '—'}</p>
+                      </div>
+                      <label className="booking-checkbox-field" title="Set automatically once amount paid reaches the committed amount - not editable directly">
+                        <input type="checkbox" disabled checked={fullyPaid} readOnly />
+                        Fully paid
+                      </label>
+                      <label className="booking-field">
+                        Payment date
+                        <input
+                          type="date"
+                          disabled={p.fullyPaid}
+                          value={p.paymentDate}
+                          onChange={(e) => updatePaymentRow(i, { paymentDate: e.target.value })}
+                        />
+                      </label>
+                      <label className="booking-field">
+                        Payment due date
+                        <input
+                          type="date"
+                          disabled={p.fullyPaid}
+                          value={p.paymentDueDate}
+                          onChange={(e) => updatePaymentRow(i, { paymentDueDate: e.target.value })}
+                        />
+                      </label>
+                    </div>
+                  )
+                })}
+                {form.payments.length < PAYMENT_TYPES.length && (
+                  <button type="button" className="booking-neutral-btn" onClick={addPaymentRow}>
+                    + Add payment type
+                  </button>
                 )}
-                {formMode === 'edit' && !editingIncomplete && (
-                  <label className="booking-field booking-field-full">
-                    Amount paid now
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      disabled={paymentLocked}
-                      placeholder="0"
-                      value={paymentIncrement}
-                      onChange={(e) => setPaymentIncrement(numericOnly(e.target.value))}
-                    />
-                  </label>
-                )}
-                <div className="booking-field">
-                  Balance
-                  <p className="booking-computed-value">{computedBalance !== null ? computedBalance.toLocaleString() : '—'}</p>
-                </div>
-                <label className="booking-checkbox-field" title="Set automatically once amount paid reaches the committed amount - not editable directly">
-                  <input type="checkbox" disabled checked={isFullyPaid} readOnly />
-                  Fully paid
-                </label>
-                <label className="booking-field">
-                  Payment date
-                  <input
-                    type="date"
-                    disabled={paymentLocked}
-                    value={form.paymentDate}
-                    onChange={(e) => setForm({ ...form, paymentDate: e.target.value })}
-                  />
-                </label>
-                <label className="booking-field">
-                  Payment due date
-                  <input
-                    type="date"
-                    disabled={paymentLocked}
-                    value={form.paymentDueDate}
-                    onChange={(e) => setForm({ ...form, paymentDueDate: e.target.value })}
-                  />
-                </label>
               </div>
             )}
             </fieldset>

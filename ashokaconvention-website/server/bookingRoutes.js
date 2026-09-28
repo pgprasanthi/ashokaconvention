@@ -4,14 +4,18 @@ import { listBookings, createBooking, updateBooking, deleteBooking } from './boo
 import { listEvents, createEvent, updateEvent, deleteEvent } from './events.js'
 import { getChecklist, saveChecks } from './eventChecks.js'
 import { HALLS } from './halls.js'
+import { PAYMENT_TYPES } from './paymentTypes.js'
 
 export const bookingRouter = Router()
 bookingRouter.use(requireAuth)
 
-function missingRequiredFields({ title, start, end, customerName, customerMobile, amountPaid, hall, committedAmount }) {
+// requirePayment: true on create (a booking must start with at least one
+// payment type) - false on update, where an empty payments array just means
+// "nothing about any payment changed this visit," a normal no-op edit.
+function missingRequiredFields({ title, start, end, customerName, customerMobile, hall, payments }, requirePayment) {
   const isBlank = (v) => v === undefined || v === null || v === ''
-  if (isBlank(title) || isBlank(start) || isBlank(end) || isBlank(customerName) || isBlank(customerMobile) || isBlank(amountPaid) || isBlank(hall)) {
-    return 'title, start, end, customer name, customer mobile, amount paid, and hall are required'
+  if (isBlank(title) || isBlank(start) || isBlank(end) || isBlank(customerName) || isBlank(customerMobile) || isBlank(hall)) {
+    return 'title, start, end, customer name, customer mobile, and hall are required'
   }
   if (!HALLS.includes(hall)) {
     return `hall must be one of: ${HALLS.join(', ')}`
@@ -19,11 +23,22 @@ function missingRequiredFields({ title, start, end, customerName, customerMobile
   if (!/^\d{10}$/.test(customerMobile)) {
     return 'customer mobile must be a valid 10-digit number'
   }
-  if (!/^\d+(\.\d+)?$/.test(String(amountPaid))) {
-    return 'amount paid must be a number'
+  if (!Array.isArray(payments)) {
+    return 'payments must be an array'
   }
-  if (!isBlank(committedAmount) && !/^\d+(\.\d+)?$/.test(String(committedAmount))) {
-    return 'committed amount must be a number'
+  if (requirePayment && !payments.length) {
+    return 'at least one payment type with an amount paid is required'
+  }
+  for (const p of payments) {
+    if (!PAYMENT_TYPES.includes(p.paymentType)) {
+      return `payment type must be one of: ${PAYMENT_TYPES.join(', ')}`
+    }
+    if (isBlank(p.amountPaid) || !/^\d+(\.\d+)?$/.test(String(p.amountPaid))) {
+      return 'amount paid must be a number for every payment type'
+    }
+    if (!isBlank(p.committedAmount) && !/^\d+(\.\d+)?$/.test(String(p.committedAmount))) {
+      return 'committed amount must be a number for every payment type'
+    }
   }
   return null
 }
@@ -50,10 +65,9 @@ bookingRouter.get('/', async (req, res) => {
 bookingRouter.post('/', requireRole('admin', 'staff'), async (req, res) => {
   const {
     title, start, end, description, customerName, customerEmail, customerMobile, customerAddress,
-    amountPaid, paymentDate, hall,
-    eventType, referredBy, committedAmount, closedBy, guestCount, paymentDueDate
+    hall, eventType, referredBy, closedBy, guestCount, payments
   } = req.body
-  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, amountPaid, hall, committedAmount })
+  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, hall, payments }, true)
   if (error) return res.status(400).json({ error })
   try {
     // Notes is free-form - whatever the user typed, from mobile or the app,
@@ -62,8 +76,6 @@ bookingRouter.post('/', requireRole('admin', 'staff'), async (req, res) => {
     const event = await createEvent({
       eventId: booking.id,
       bookingDate: start.slice(0, 10),
-      amountPaid,
-      paymentDate,
       customerName,
       customerEmail,
       customerMobile,
@@ -74,10 +86,11 @@ bookingRouter.post('/', requireRole('admin', 'staff'), async (req, res) => {
       eventName: title,
       eventType,
       referredBy,
-      committedAmount,
       closedBy,
       guestCount,
-      paymentDueDate,
+      // One or more { paymentType, committedAmount, amountPaid, paymentDate,
+      // paymentDueDate } line items from the booking form's Payment step.
+      payments,
       // Mirrors the same "Notes" field sent to Calendar as its description,
       // so it's queryable/reportable without cross-referencing Calendar.
       notes: description,
@@ -92,15 +105,12 @@ bookingRouter.post('/', requireRole('admin', 'staff'), async (req, res) => {
 bookingRouter.put('/:id', requireRole('admin', 'staff'), async (req, res) => {
   const {
     title, start, end, description, customerName, customerEmail, customerMobile, customerAddress,
-    amountPaid, paymentDate, hall,
-    eventType, referredBy, committedAmount, closedBy, guestCount, paymentDueDate
+    hall, eventType, referredBy, closedBy, guestCount, payments
   } = req.body
-  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, amountPaid, hall, committedAmount })
+  const error = missingRequiredFields({ title, start, end, customerName, customerMobile, hall, payments }, false)
   if (error) return res.status(400).json({ error })
   const eventFields = {
     bookingDate: start.slice(0, 10),
-    amountPaid,
-    paymentDate,
     customerName,
     customerEmail,
     customerMobile,
@@ -109,10 +119,9 @@ bookingRouter.put('/:id', requireRole('admin', 'staff'), async (req, res) => {
     eventName: title,
     eventType,
     referredBy,
-    committedAmount,
     closedBy,
     guestCount,
-    paymentDueDate,
+    payments,
     notes: description,
     actor: req.user.email
   }

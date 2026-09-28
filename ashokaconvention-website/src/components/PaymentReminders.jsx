@@ -51,7 +51,7 @@ export default function PaymentReminders() {
     setSending(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/payment-reminders/${encodeURIComponent(active.eventId)}/send`, {
+      const res = await fetch(`${API_URL}/api/payment-reminders/${encodeURIComponent(active.eventId)}/${encodeURIComponent(active.paymentType)}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -93,6 +93,7 @@ export default function PaymentReminders() {
             <tr>
               <th>Customer</th>
               <th>Event</th>
+              <th>Type</th>
               <th>Event date</th>
               <th>Due date</th>
               <th>Balance</th>
@@ -102,9 +103,10 @@ export default function PaymentReminders() {
           </thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.eventId} className={r.overdue ? 'reminder-overdue' : ''}>
+              <tr key={`${r.eventId}:${r.paymentType}`} className={r.overdue ? 'reminder-overdue' : ''}>
                 <td>{r.customerName || '—'}<br /><span className="reminder-sub">{r.customerMobile}</span></td>
                 <td>{r.eventName || '—'}<br /><span className="reminder-sub">{r.hall}</span></td>
+                <td>{r.paymentTypeLabel}</td>
                 <td>{fmtDate(r.bookingDate)}</td>
                 <td>{fmtDate(r.paymentDueDate)}{r.overdue && <span className="reminder-badge">Overdue</span>}</td>
                 <td>{fmtAmount(r.balance)}</td>
@@ -127,7 +129,7 @@ export default function PaymentReminders() {
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan="7">No payments due or overdue right now.</td></tr>
+              <tr><td colSpan="8">No payments due or overdue right now.</td></tr>
             )}
           </tbody>
         </table>
@@ -139,7 +141,7 @@ export default function PaymentReminders() {
             <button type="button" className="booking-modal-close" onClick={closeSend} aria-label="Close">✕</button>
             <h4>Send payment reminder</h4>
             <p className="reminder-sub">
-              To {active.customerName} · {active.customerMobile} · balance {fmtAmount(active.balance)} due {fmtDate(active.paymentDueDate)}
+              To {active.customerName} · {active.customerMobile} · {active.paymentTypeLabel} balance {fmtAmount(active.balance)} due {fmtDate(active.paymentDueDate)}
             </p>
 
             {error && <p className="team-error">{error}</p>}

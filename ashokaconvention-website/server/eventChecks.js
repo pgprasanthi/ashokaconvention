@@ -11,11 +11,14 @@ import { ALL_CHECKS, CHECK_STATUSES, isValidCheckKey, checkPhase } from './check
 // explicit saved row always wins over the auto value.
 export async function getChecklist(eventId) {
   await ensureSchema()
-  const [{ rows: checkRows }, { rows: eventRows }] = await Promise.all([
+  const [{ rows: checkRows }, { rows: paymentRows }] = await Promise.all([
     query('SELECT * FROM event_checks WHERE event_id = $1', [eventId]),
-    query('SELECT fully_paid FROM events WHERE event_id = $1', [eventId])
+    // "Fully paid" now means every payment type on the booking is fully
+    // paid (hall rent, catering, decor, ...) - bool_and is null with no
+    // rows at all, so that's treated as not fully paid.
+    query('SELECT bool_and(fully_paid) AS fully_paid, count(*) AS payment_count FROM payments WHERE event_id = $1', [eventId])
   ])
-  const fullyPaid = Boolean(eventRows[0]?.fully_paid)
+  const fullyPaid = Number(paymentRows[0]?.payment_count || 0) > 0 && paymentRows[0]?.fully_paid === true
   const savedByKey = new Map(checkRows.map((r) => [r.item_key, r]))
 
   const items = ALL_CHECKS.map(({ key, label, phase }) => {
