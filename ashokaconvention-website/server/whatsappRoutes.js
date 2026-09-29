@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { recordLead, recordOutboundMessage, shouldSendAwayMessage, markAwaySent, normalizePhone } from './whatsappLeads.js'
 import { logMessage } from './whatsappMessages.js'
+import { storeInboundMedia } from './whatsappMedia.js'
 import { getSettings } from './settings.js'
 import { sendWhatsAppMessage, sendWhatsAppButtons } from './whatsappSend.js'
 
@@ -77,7 +78,10 @@ function extractOutboundEchoes(body) {
 
 // Pulls the sender, name, and (if this came from a Click-to-WhatsApp ad) the
 // ad referral info out of Meta's webhook payload shape. Returns [] if this
-// event isn't an inbound text message (e.g. a delivery/read status update).
+// event isn't an inbound text/image message (e.g. a delivery/read status
+// update). Media types other than image (video, document, audio, sticker)
+// aren't handled yet - they'd fall through with no text and no mediaId,
+// same as an unrecognized message today.
 function extractMessages(body) {
   const out = []
   for (const entry of body?.entry || []) {
@@ -92,9 +96,11 @@ function extractMessages(body) {
           adSource: message.referral?.headline || message.referral?.source_url || '',
           buttonReplyId: message.interactive?.button_reply?.id || null,
           // Falls back to the tapped button's own label for interactive
-          // replies, so the conversation log reads as "Check Availability"
-          // rather than a blank line.
-          text: message.text?.body || message.interactive?.button_reply?.title || ''
+          // replies, or an image's own caption, so the conversation log
+          // reads as something rather than a blank line.
+          text: message.text?.body || message.interactive?.button_reply?.title || message.image?.caption || '',
+          mediaId: message.image?.id || null,
+          mediaType: message.image ? 'image' : ''
         })
       }
     }
@@ -120,9 +126,12 @@ function withPhoneLock(phone, fn) {
 // (first-time contacts only) and/or away message (at most once per cooldown
 // window) if enabled in Settings. Runs after the response is already sent,
 // so a slow Dualhook send call never delays Meta's acknowledgment.
-async function handleInboundMessage({ phone, name, adSource, buttonReplyId, text }) {
+async function handleInboundMessage({ phone, name, adSource, buttonReplyId, text, mediaId, mediaType }) {
   const { isNew } = await recordLead({ phone, name, adSource })
-  await logMessage(phone, 'in', text)
+  // Downloaded and stored before logging, since the message row needs the
+  // resulting whatsapp_media id, not Meta's own (short-lived) one.
+  const storedMediaId = mediaId ? await storeInboundMedia(mediaId) : null
+  await logMessage(phone, 'in', text, storedMediaId ? { id: storedMediaId, type: mediaType } : null)
   const settings = await getSettings()
 
   // A tap on one of the greeting's menu buttons - reply with whichever

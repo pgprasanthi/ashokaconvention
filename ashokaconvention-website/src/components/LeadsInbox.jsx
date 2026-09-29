@@ -239,7 +239,11 @@ export default function LeadsInbox() {
               <div className="wa-thread">
                 {messages.map((m) => (
                   <div key={m.id} className={`wa-bubble ${m.direction}`}>
-                    <p>{m.text || <em>(no text)</em>}</p>
+                    {m.mediaType === 'image' && m.mediaId && (
+                      <img className="wa-image" src={`${API_URL}/api/whatsapp-media/${m.mediaId}`} alt="" loading="lazy" />
+                    )}
+                    {m.text && <p>{m.text}</p>}
+                    {!m.text && !m.mediaId && <p><em>(no text)</em></p>}
                     <span>{new Date(m.createdDate).toLocaleString()}</span>
                   </div>
                 ))}

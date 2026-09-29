@@ -373,13 +373,30 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_whatsapp_leads_status ON whatsapp_leads (status);
 
+      -- One row per media attachment (currently just images) downloaded
+      -- from a WhatsApp message and kept permanently - Meta's own media URL
+      -- expires after a few minutes, so it's fetched once on arrival
+      -- (see whatsappMedia.js) rather than re-requested each time it's
+      -- viewed. Served back out through the authenticated
+      -- /api/whatsapp-media/:id route, never exposed as a raw Meta URL.
+      CREATE TABLE IF NOT EXISTS whatsapp_media (
+        id SERIAL PRIMARY KEY,
+        mime_type TEXT NOT NULL DEFAULT '',
+        data BYTEA NOT NULL,
+        created_date TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
       CREATE TABLE IF NOT EXISTS whatsapp_messages (
         id SERIAL PRIMARY KEY,
         phone TEXT NOT NULL,
         direction TEXT NOT NULL,
         body TEXT NOT NULL DEFAULT '',
+        media_type TEXT NOT NULL DEFAULT '',
+        media_id INTEGER REFERENCES whatsapp_media(id),
         created_date TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT '';
+      ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS media_id INTEGER REFERENCES whatsapp_media(id);
       CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_phone ON whatsapp_messages (phone);
       CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_created_date ON whatsapp_messages (created_date);
 

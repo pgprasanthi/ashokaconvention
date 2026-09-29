@@ -226,6 +226,8 @@ main{flex:1}
 .wa-bubble span{display:block;margin-top:4px;font-size:0.68rem;color:#667781}
 .wa-bubble.in{align-self:flex-start;background:#fff;border-top-left-radius:2px}
 .wa-bubble.out{align-self:flex-end;background:#d9fdd3;border-top-right-radius:2px}
+.wa-image{display:block;max-width:100%;max-height:280px;border-radius:6px;object-fit:cover}
+.wa-bubble p:not(:first-child){margin-top:6px}
 .booking-checkbox-field{
   display:flex;align-items:center;gap:8px;align-self:end;
   font-size:0.85rem;font-weight:600;color:#334155;padding-bottom:2px;

@@ -7,6 +7,7 @@ import { teamRouter } from './teamRoutes.js'
 import { bookingRouter } from './bookingRoutes.js'
 import { guestRouter } from './guestRoutes.js'
 import { whatsappRouter } from './whatsappRoutes.js'
+import { whatsappMediaRouter } from './whatsappMediaRoutes.js'
 import { reportRouter } from './reportRoutes.js'
 import { leadRouter } from './leadRoutes.js'
 import { settingsRouter } from './settingsRoutes.js'
@@ -37,6 +38,7 @@ app.use('/api/guests', guestRouter)
 // is the substitute protection: a long random segment nobody can guess,
 // combined with payload validation (WABA/phone number ID) inside the router.
 app.use(`/api/whatsapp/webhook/${WHATSAPP_WEBHOOK_SECRET_PATH}`, whatsappRouter)
+app.use('/api/whatsapp-media', whatsappMediaRouter)
 app.use('/api/reports', reportRouter)
 app.use('/api/leads', leadRouter)
 app.use('/api/settings', settingsRouter)
