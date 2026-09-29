@@ -23,6 +23,10 @@ function rowToPayment(row) {
     eventId: row.event_id,
     customerId: row.customer_id,
     paymentType: row.payment_type,
+    // Free-text description, only ever meaningful for 'other' (blank for
+    // the fixed types) - what tells apart several 'other' charges on the
+    // same booking (DJ, photography, ...).
+    label: row.label || '',
     committedAmount: row.committed_amount ?? '',
     amountPaid: row.amount_paid ?? '',
     balance: row.balance ?? '',
@@ -55,24 +59,32 @@ export async function listPaymentsForEvents(query, eventIds) {
   return map
 }
 
-// Creates or updates the one (event, paymentType) line item, inside the
-// caller's transaction. amountPaid/committedAmount are the new CUMULATIVE
-// totals for this type (same contract the old single-payment events.js
-// used) - balance/fullyPaid are always derived here, never trusted from the
-// caller. Once a line item is fully paid its payment fields lock - a caller
-// can still touch other payment types on the same event, but changes to a
-// locked type are silently ignored rather than applied, enforced here so it
-// can't be bypassed by calling the API directly.
+// Creates or updates one payment line item, inside the caller's
+// transaction. amountPaid/committedAmount are the new CUMULATIVE totals for
+// this line item (same contract the old single-payment events.js used) -
+// balance/fullyPaid are always derived here, never trusted from the caller.
+// Once a line item is fully paid its payment fields lock - a caller can
+// still touch other line items on the same event, but changes to a locked
+// one are silently ignored rather than applied, enforced here so it can't
+// be bypassed by calling the API directly.
+//
+// The fixed types (hall_rent, catering, decor, advance) have at most one
+// row per event - identified by (event_id, payment_type), so omitting `id`
+// finds and updates that row same as before. 'other' is the exception: a
+// booking can have several, so there's no natural key to upsert against -
+// omitting `id` for 'other' always creates a new charge; to edit an
+// existing one, pass its `id` back (see BookingsCalendar.jsx).
 export async function upsertPayment(client, {
-  eventId, customerId, paymentType, committedAmount, amountPaid, paymentDate, paymentDueDate, notes, actor
+  id, eventId, customerId, paymentType, label, committedAmount, amountPaid, paymentDate, paymentDueDate, notes, actor
 }) {
-  const { rows } = await client.query(
-    'SELECT * FROM payments WHERE event_id = $1 AND payment_type = $2',
-    [eventId, paymentType]
-  )
-  const existing = rows[0] ? rowToPayment(rows[0]) : null
+  let existing = null
+  if (id) {
+    const { rows } = await client.query('SELECT * FROM payments WHERE id = $1 AND event_id = $2', [id, eventId])
+    existing = rows[0] ? rowToPayment(rows[0]) : null
+  }
   const locked = Boolean(existing?.fullyPaid)
 
+  const mergedLabel = label ?? existing?.label ?? ''
   const mergedCommitted = locked ? existing.committedAmount : (committedAmount ?? existing?.committedAmount ?? '')
   const mergedPaid = locked ? existing.amountPaid : (amountPaid ?? existing?.amountPaid ?? '')
   const mergedDate = locked ? existing.paymentDate : (paymentDate ?? existing?.paymentDate ?? '')
@@ -81,31 +93,51 @@ export async function upsertPayment(client, {
   const balance = locked ? existing.balance : computeBalance(mergedCommitted, mergedPaid)
   const fullyPaid = locked ? existing.fullyPaid : computeFullyPaid(mergedCommitted, mergedPaid)
 
-  await client.query(
-    `INSERT INTO payments (
-       event_id, customer_id, payment_type, committed_amount, amount_paid, balance, fully_paid,
-       payment_date, payment_due_date, notes, created_by, updated_by
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
-     ON CONFLICT (event_id, payment_type) DO UPDATE SET
-       committed_amount = EXCLUDED.committed_amount,
-       amount_paid = EXCLUDED.amount_paid,
-       balance = EXCLUDED.balance,
-       fully_paid = EXCLUDED.fully_paid,
-       payment_date = EXCLUDED.payment_date,
-       payment_due_date = EXCLUDED.payment_due_date,
-       notes = EXCLUDED.notes,
-       updated_by = EXCLUDED.updated_by,
-       updated_date = now()`,
-    [
-      eventId, customerId, paymentType, toNullIfBlank(mergedCommitted), toNullIfBlank(mergedPaid),
-      toNullIfBlank(balance), Boolean(fullyPaid), toNullIfBlank(mergedDate), toNullIfBlank(mergedDueDate),
-      mergedNotes || '', actor
-    ]
-  )
+  let savedId = existing?.id
+  if (existing) {
+    await client.query(
+      `UPDATE payments SET label = $1, committed_amount = $2, amount_paid = $3, balance = $4, fully_paid = $5,
+         payment_date = $6, payment_due_date = $7, notes = $8, updated_by = $9, updated_date = now()
+       WHERE id = $10`,
+      [
+        mergedLabel, toNullIfBlank(mergedCommitted), toNullIfBlank(mergedPaid), toNullIfBlank(balance),
+        Boolean(fullyPaid), toNullIfBlank(mergedDate), toNullIfBlank(mergedDueDate), mergedNotes || '', actor, existing.id
+      ]
+    )
+  } else {
+    // No `id` given: for a fixed type this still finds its one existing row
+    // via the partial unique index and updates it (same upsert behavior as
+    // before); for 'other' the index excludes that type entirely, so this
+    // always inserts a fresh row - a new charge, never merged into another.
+    const { rows } = await client.query(
+      `INSERT INTO payments (
+         event_id, customer_id, payment_type, label, committed_amount, amount_paid, balance, fully_paid,
+         payment_date, payment_due_date, notes, created_by, updated_by
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+       ON CONFLICT (event_id, payment_type) WHERE payment_type <> 'other' DO UPDATE SET
+         label = EXCLUDED.label,
+         committed_amount = EXCLUDED.committed_amount,
+         amount_paid = EXCLUDED.amount_paid,
+         balance = EXCLUDED.balance,
+         fully_paid = EXCLUDED.fully_paid,
+         payment_date = EXCLUDED.payment_date,
+         payment_due_date = EXCLUDED.payment_due_date,
+         notes = EXCLUDED.notes,
+         updated_by = EXCLUDED.updated_by,
+         updated_date = now()
+       RETURNING id`,
+      [
+        eventId, customerId, paymentType, mergedLabel, toNullIfBlank(mergedCommitted), toNullIfBlank(mergedPaid),
+        toNullIfBlank(balance), Boolean(fullyPaid), toNullIfBlank(mergedDate), toNullIfBlank(mergedDueDate),
+        mergedNotes || '', actor
+      ]
+    )
+    savedId = rows[0].id
+  }
 
   return {
-    eventId, customerId, paymentType, committedAmount: mergedCommitted, amountPaid: mergedPaid,
-    balance, fullyPaid: Boolean(fullyPaid), paymentDate: mergedDate, paymentDueDate: mergedDueDate,
+    id: savedId, eventId, customerId, paymentType, label: mergedLabel, committedAmount: mergedCommitted,
+    amountPaid: mergedPaid, balance, fullyPaid: Boolean(fullyPaid), paymentDate: mergedDate, paymentDueDate: mergedDueDate,
     notes: mergedNotes, createdBy: existing?.createdBy || actor, updatedBy: actor
   }
 }

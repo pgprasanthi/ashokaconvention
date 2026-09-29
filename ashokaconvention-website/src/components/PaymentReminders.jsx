@@ -51,7 +51,7 @@ export default function PaymentReminders() {
     setSending(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/payment-reminders/${encodeURIComponent(active.eventId)}/${encodeURIComponent(active.paymentType)}/send`, {
+      const res = await fetch(`${API_URL}/api/payment-reminders/${encodeURIComponent(active.eventId)}/${encodeURIComponent(active.paymentId)}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -103,7 +103,7 @@ export default function PaymentReminders() {
           </thead>
           <tbody>
             {items.map((r) => (
-              <tr key={`${r.eventId}:${r.paymentType}`} className={r.overdue ? 'reminder-overdue' : ''}>
+              <tr key={r.paymentId} className={r.overdue ? 'reminder-overdue' : ''}>
                 <td>{r.customerName || '—'}<br /><span className="reminder-sub">{r.customerMobile}</span></td>
                 <td>{r.eventName || '—'}<br /><span className="reminder-sub">{r.hall}</span></td>
                 <td>{r.paymentTypeLabel}</td>

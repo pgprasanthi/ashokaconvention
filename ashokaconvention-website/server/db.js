@@ -213,15 +213,19 @@ export function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_events_created_date ON events (created_date);
       CREATE INDEX IF NOT EXISTS idx_events_deleted ON events (deleted);
 
-      -- One row per (event, payment type) - hall rent, catering, decor,
-      -- advance, etc. (see paymentTypes.js). Each type has its own committed
-      -- amount and balance, tracked independently, so a booking can be fully
-      -- paid on hall rent while catering is still outstanding.
+      -- One row per (event, payment type) for the fixed types (hall rent,
+      -- catering, decor, advance) - each with its own committed amount and
+      -- balance, tracked independently, so a booking can be fully paid on
+      -- hall rent while catering is still outstanding. 'other' is the
+      -- exception: a booking can have several distinct "other" charges
+      -- (DJ, photography, ...), told apart by their label - see the
+      -- partial unique index below, which deliberately excludes 'other'.
       CREATE TABLE IF NOT EXISTS payments (
         id SERIAL PRIMARY KEY,
         event_id TEXT NOT NULL REFERENCES events(event_id),
         customer_id INTEGER NOT NULL REFERENCES customers(id),
         payment_type TEXT NOT NULL DEFAULT 'hall_rent',
+        label TEXT NOT NULL DEFAULT '',
         committed_amount NUMERIC,
         amount_paid NUMERIC,
         balance NUMERIC,
@@ -232,9 +236,15 @@ export function ensureSchema() {
         created_by TEXT NOT NULL DEFAULT '',
         created_date TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_date TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_by TEXT NOT NULL DEFAULT '',
-        UNIQUE (event_id, payment_type)
+        updated_by TEXT NOT NULL DEFAULT ''
       );
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT '';
+      -- A database created before 'other' could repeat still has the old
+      -- blanket UNIQUE(event_id, payment_type) - drop it in favor of the
+      -- partial index below, which allows several 'other' rows per event.
+      ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_event_id_payment_type_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_event_type_unique
+        ON payments (event_id, payment_type) WHERE payment_type <> 'other';
       CREATE INDEX IF NOT EXISTS idx_payments_event_id ON payments (event_id);
       CREATE INDEX IF NOT EXISTS idx_payments_due_date ON payments (payment_due_date);
     `)
@@ -324,9 +334,15 @@ export function ensureSchema() {
       -- (see paymentReminders.js). This is the sent-log: it drives the
       -- "already reminded on X by Y" state and keeps a record of failed sends
       -- (send_status = 'sent' | 'skipped' | 'failed').
+      -- payment_id pins a reminder to the exact payments row it was sent
+      -- for - required now that 'other' can have several rows on the same
+      -- event, so (event_id, payment_type) alone no longer identifies one.
+      -- payment_type is kept alongside as a denormalized convenience column
+      -- (readable without a join), not the identity.
       CREATE TABLE IF NOT EXISTS payment_reminders (
         id SERIAL PRIMARY KEY,
         event_id TEXT NOT NULL,
+        payment_id INTEGER REFERENCES payments(id),
         payment_type TEXT NOT NULL DEFAULT '',
         due_date DATE,
         balance_at_send NUMERIC,
@@ -338,7 +354,9 @@ export function ensureSchema() {
         error TEXT NOT NULL DEFAULT ''
       );
       ALTER TABLE payment_reminders ADD COLUMN IF NOT EXISTS payment_type TEXT NOT NULL DEFAULT '';
+      ALTER TABLE payment_reminders ADD COLUMN IF NOT EXISTS payment_id INTEGER REFERENCES payments(id);
       CREATE INDEX IF NOT EXISTS idx_payment_reminders_event_id ON payment_reminders (event_id);
+      CREATE INDEX IF NOT EXISTS idx_payment_reminders_payment_id ON payment_reminders (payment_id);
 
       CREATE TABLE IF NOT EXISTS whatsapp_leads (
         id SERIAL PRIMARY KEY,

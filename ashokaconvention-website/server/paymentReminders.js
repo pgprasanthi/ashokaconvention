@@ -24,6 +24,13 @@ function badRequest(message) {
   return err
 }
 
+// A payment's own label (set for 'other' charges - "DJ", "Photography", ...)
+// takes priority over the generic type label, since that's what actually
+// tells apart several 'other' charges on the same booking.
+function displayLabel(payment) {
+  return payment.label || paymentTypeLabel(payment.paymentType)
+}
+
 // YYYY-MM-DD in the server's local date - matches how DATE columns come back
 // (see the type parser in db.js) so string comparison is a valid date order.
 function todayISODate() {
@@ -66,7 +73,7 @@ function renderTemplate(tpl, ev, payment, balance) {
     .replaceAll('{event}', ev.eventName || 'your event')
     .replaceAll('{hall}', ev.hall || '')
     .replaceAll('{date}', fmtDate(ev.bookingDate))
-    .replaceAll('{payment_type}', paymentTypeLabel(payment.paymentType))
+    .replaceAll('{payment_type}', displayLabel(payment))
     .replaceAll('{due_date}', fmtDate(payment.paymentDueDate))
     .replaceAll('{balance}', fmtAmount(balance))
     .replaceAll('{amount_paid}', fmtAmount(payment.amountPaid))
@@ -80,22 +87,23 @@ function balanceOf(payment) {
   return committed - paid
 }
 
-// Most recent reminder per (event, payment type, due date), so a due date
-// pushed out after a part payment starts fresh rather than showing the old
-// "already sent".
-async function latestRemindersFor(eventIds) {
-  if (!eventIds.length) return new Map()
+// Most recent reminder per (payment, due date), so a due date pushed out
+// after a part payment starts fresh rather than showing the old "already
+// sent". Keyed by payment_id, not payment_type - 'other' can have several
+// rows on the same event, so the type alone no longer identifies one.
+async function latestRemindersFor(paymentIds) {
+  if (!paymentIds.length) return new Map()
   const { rows } = await query(
-    `SELECT DISTINCT ON (event_id, payment_type, due_date)
-       event_id, payment_type, due_date, sent_by, sent_date, send_status, error
+    `SELECT DISTINCT ON (payment_id, due_date)
+       payment_id, due_date, sent_by, sent_date, send_status, error
      FROM payment_reminders
-     WHERE event_id = ANY($1)
-     ORDER BY event_id, payment_type, due_date, sent_date DESC`,
-    [eventIds]
+     WHERE payment_id = ANY($1)
+     ORDER BY payment_id, due_date, sent_date DESC`,
+    [paymentIds]
   )
   const map = new Map()
   for (const r of rows) {
-    map.set(`${r.event_id}|${r.payment_type || ''}|${r.due_date || ''}`, {
+    map.set(`${r.payment_id}|${r.due_date || ''}`, {
       sentBy: r.sent_by,
       sentDate: r.sent_date ? r.sent_date.toISOString() : '',
       sendStatus: r.send_status,
@@ -105,9 +113,9 @@ async function latestRemindersFor(eventIds) {
   return map
 }
 
-// The live queue: one item per (booking, payment type) that's non-deleted,
-// not fully paid, has a positive balance, and whose payment_due_date is
-// within `daysBefore` days - or already past (up to OVERDUE_FLOOR_DAYS ago).
+// The live queue: one item per payment line item that's non-deleted, not
+// fully paid, has a positive balance, and whose payment_due_date is within
+// `daysBefore` days - or already past (up to OVERDUE_FLOOR_DAYS ago).
 export async function listDueReminders() {
   await ensureSchema()
   const settings = await getSettings()
@@ -130,7 +138,7 @@ export async function listDueReminders() {
     }
   }
 
-  const reminders = await latestRemindersFor(candidates.map((c) => c.event.eventId))
+  const reminders = await latestRemindersFor(candidates.map((c) => c.payment.id))
 
   return {
     daysBefore,
@@ -139,8 +147,9 @@ export async function listDueReminders() {
         const balance = balanceOf(p)
         return {
           eventId: e.eventId,
+          paymentId: p.id,
           paymentType: p.paymentType,
-          paymentTypeLabel: paymentTypeLabel(p.paymentType),
+          paymentTypeLabel: displayLabel(p),
           customerName: e.customerName,
           customerMobile: e.customerMobile,
           hall: e.hall,
@@ -152,19 +161,20 @@ export async function listDueReminders() {
           balance: String(balance),
           overdue: p.paymentDueDate < today,
           message: renderTemplate(template, e, p, balance),
-          lastReminder: reminders.get(`${e.eventId}|${p.paymentType}|${p.paymentDueDate}`) || null
+          lastReminder: reminders.get(`${p.id}|${p.paymentDueDate}`) || null
         }
       })
       .sort((a, b) => a.paymentDueDate.localeCompare(b.paymentDueDate))
   }
 }
 
-// Sends one reminder for one (event, payment type). `message` is the
+// Sends one reminder for one payment line item (identified by its own id,
+// not type - 'other' can have several on the same event). `message` is the
 // (possibly staff-edited) final text from the queue. A WhatsApp rejection
 // (e.g. the customer is outside the 24-hour window and this isn't a
 // template message) is recorded as a 'failed' row and returned as `error`
 // rather than thrown, so the row in the UI can show why.
-export async function sendReminder(eventId, paymentType, { message, actor }) {
+export async function sendReminder(eventId, paymentId, { message, actor }) {
   await ensureSchema()
 
   const finalText = String(message || '').trim()
@@ -172,20 +182,22 @@ export async function sendReminder(eventId, paymentType, { message, actor }) {
   if (finalText.length > MAX_MESSAGE_LENGTH) throw badRequest('Message is too long')
 
   const { rows } = await query(
-    `SELECT e.deleted, c.mobile AS customer_mobile, p.committed_amount, p.amount_paid, p.payment_due_date, p.fully_paid
+    `SELECT e.deleted, c.mobile AS customer_mobile, p.payment_type, p.label,
+            p.committed_amount, p.amount_paid, p.payment_due_date, p.fully_paid
      FROM events e
      JOIN customers c ON c.id = e.customer_id
-     JOIN payments p ON p.event_id = e.event_id AND p.payment_type = $2
+     JOIN payments p ON p.event_id = e.event_id AND p.id = $2
      WHERE e.event_id = $1`,
-    [eventId, paymentType]
+    [eventId, paymentId]
   )
   const row = rows[0]
-  if (!row) throw badRequest('Booking or payment type not found')
+  if (!row) throw badRequest('Booking or payment not found')
   if (row.deleted) throw badRequest('Booking is cancelled')
   if (row.fully_paid) throw badRequest('This payment is already fully paid')
 
   const payment = {
-    paymentType,
+    paymentType: row.payment_type,
+    label: row.label,
     committedAmount: row.committed_amount ?? '',
     amountPaid: row.amount_paid ?? '',
     paymentDueDate: row.payment_due_date || ''
@@ -212,9 +224,9 @@ export async function sendReminder(eventId, paymentType, { message, actor }) {
   }
 
   await query(
-    `INSERT INTO payment_reminders (event_id, payment_type, due_date, balance_at_send, phone, message, sent_by, send_status, error)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [eventId, paymentType, toNullIfBlank(payment.paymentDueDate), balance, waNumber, finalText, actor, sendStatus, error]
+    `INSERT INTO payment_reminders (event_id, payment_id, payment_type, due_date, balance_at_send, phone, message, sent_by, send_status, error)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [eventId, paymentId, payment.paymentType, toNullIfBlank(payment.paymentDueDate), balance, waNumber, finalText, actor, sendStatus, error]
   )
 
   return { ...(await listDueReminders()), sendStatus, error }

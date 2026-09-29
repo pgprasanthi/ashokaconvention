@@ -107,7 +107,7 @@ export async function createEvent({
       const saved = []
       for (const p of paymentInputs) {
         saved.push(await upsertPayment(client, {
-          eventId, customerId, paymentType: p.paymentType || 'hall_rent',
+          eventId, customerId, paymentType: p.paymentType || 'hall_rent', label: p.label,
           committedAmount: p.committedAmount, amountPaid: p.amountPaid,
           paymentDate: p.paymentDate, paymentDueDate: p.paymentDueDate, notes: p.notes, actor
         }))
@@ -193,7 +193,7 @@ export async function updateEvent(eventId, {
       const saved = []
       for (const p of (payments || [])) {
         saved.push(await upsertPayment(client, {
-          eventId, customerId, paymentType: p.paymentType,
+          id: p.id, eventId, customerId, paymentType: p.paymentType, label: p.label,
           committedAmount: p.committedAmount, amountPaid: p.amountPaid,
           paymentDate: p.paymentDate, paymentDueDate: p.paymentDueDate, notes: p.notes, actor
         }))
@@ -204,12 +204,16 @@ export async function updateEvent(eventId, {
     throw duplicateBookingError(err)
   }
 
-  // Merge the freshly-saved payment types back into the full list (unsaved
-  // types on this event are untouched, so keep their prior state).
-  const savedByType = new Map(savedPayments.map((p) => [p.paymentType, p]))
-  merged.payments = existingPayments.map((p) => savedByType.get(p.paymentType) || p)
+  // Merge the freshly-saved line items back into the full list, matched by
+  // id (not paymentType - 'other' can have several rows sharing that type,
+  // so it's not a unique key here). A saved row not already in
+  // existingPayments is a brand new one (a new fixed type, or another
+  // 'other' charge) - appended rather than replacing anything.
+  const savedById = new Map(savedPayments.filter((p) => p.id).map((p) => [p.id, p]))
+  const existingIds = new Set(existingPayments.map((p) => p.id))
+  merged.payments = existingPayments.map((p) => savedById.get(p.id) || p)
   for (const p of savedPayments) {
-    if (!merged.payments.some((existingP) => existingP.paymentType === p.paymentType)) merged.payments.push(p)
+    if (!existingIds.has(p.id)) merged.payments.push(p)
   }
   merged.committedAmount = sumField(merged.payments, 'committedAmount')
   merged.amountPaid = sumField(merged.payments, 'amountPaid')
@@ -217,13 +221,15 @@ export async function updateEvent(eventId, {
   merged.fullyPaid = merged.payments.length > 0 && merged.payments.every((p) => p.fullyPaid)
 
   if (savedPayments.length) {
-    // events.amount_paid per type is the running cumulative total (correct -
-    // each update adds to what's already on record), but the audit log
-    // should capture what actually happened IN THIS transaction, not the
-    // total after it - so this row logs just the difference from the last
-    // recorded total for that payment type, not the new cumulative figure.
+    // events.amount_paid per line item is the running cumulative total
+    // (correct - each update adds to what's already on record), but the
+    // audit log should capture what actually happened IN THIS transaction,
+    // not the total after it - so this row logs just the difference from
+    // the last recorded total for that line item (matched by id, for the
+    // same reason as above), not the new cumulative figure. No match means
+    // this is a brand new line item, so the whole amount is "this time".
     for (const p of savedPayments) {
-      const before = existingPayments.find((ep) => ep.paymentType === p.paymentType)
+      const before = existingPayments.find((ep) => ep.id === p.id)
       const paidThisTime = Number(p.amountPaid || 0) - Number(before?.amountPaid || 0)
       await appendHistory({ ...merged, ...p, amountPaid: String(paidThisTime), action: 'updated', actor })
     }

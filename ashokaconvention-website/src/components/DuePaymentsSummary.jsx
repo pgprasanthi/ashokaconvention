@@ -61,7 +61,7 @@ export default function DuePaymentsSummary({ onNavigate }) {
             </thead>
             <tbody>
               {items.slice(0, PREVIEW_COUNT).map((r) => (
-                <tr key={`${r.eventId}:${r.paymentType}`} className={r.overdue ? 'reminder-overdue' : ''}>
+                <tr key={r.paymentId} className={r.overdue ? 'reminder-overdue' : ''}>
                   <td>{r.customerName || '—'}<br /><span className="reminder-sub">{r.customerMobile}</span></td>
                   <td>{r.eventName || '—'}<br /><span className="reminder-sub">{r.hall}</span></td>
                   <td>{r.paymentTypeLabel}</td>

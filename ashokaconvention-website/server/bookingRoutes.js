@@ -33,6 +33,12 @@ function missingRequiredFields({ title, start, end, customerName, customerMobile
     if (!PAYMENT_TYPES.includes(p.paymentType)) {
       return `payment type must be one of: ${PAYMENT_TYPES.join(', ')}`
     }
+    // 'other' can repeat on the same booking (DJ, photography, ...) - a
+    // description is what tells them apart, so it's required there even
+    // though the fixed types don't need one.
+    if (p.paymentType === 'other' && isBlank(p.label?.trim?.() ?? p.label)) {
+      return 'a description is required for an Other payment'
+    }
     if (isBlank(p.amountPaid) || !/^\d+(\.\d+)?$/.test(String(p.amountPaid))) {
       return 'amount paid must be a number for every payment type'
     }

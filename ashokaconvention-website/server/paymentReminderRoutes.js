@@ -15,9 +15,9 @@ paymentReminderRouter.get('/', async (req, res) => {
   }
 })
 
-paymentReminderRouter.post('/:eventId/:paymentType/send', async (req, res) => {
+paymentReminderRouter.post('/:eventId/:paymentId/send', async (req, res) => {
   try {
-    res.json(await sendReminder(req.params.eventId, req.params.paymentType, { message: req.body?.message, actor: req.user.email }))
+    res.json(await sendReminder(req.params.eventId, req.params.paymentId, { message: req.body?.message, actor: req.user.email }))
   } catch (err) {
     res.status(err.code === 'BAD_REQUEST' ? 400 : 500).json({ error: err.message })
   }

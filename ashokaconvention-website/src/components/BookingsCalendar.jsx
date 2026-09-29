@@ -20,7 +20,7 @@ const PAYMENT_TYPE_LABELS = {
   hall_rent: 'Hall Rent', catering: 'Catering', decor: 'Decor', advance: 'Advance', other: 'Other'
 }
 const EMPTY_PAYMENT_ROW = {
-  paymentType: 'hall_rent', committedAmount: '', amountPaid: '', paymentIncrement: '',
+  id: null, paymentType: 'hall_rent', label: '', committedAmount: '', amountPaid: '', paymentIncrement: '',
   paymentDate: '', paymentDueDate: '', fullyPaid: false, isExisting: false
 }
 const EMPTY_FORM = {
@@ -120,10 +120,15 @@ export default function BookingsCalendar() {
     if (step === 1) return form.customerName && form.customerMobile
     // A brand-new payment type row (isExisting false - either the whole
     // booking is new, or it's an existing "incomplete" one, or the user just
-    // added an extra charge type) needs its starting amount paid filled in.
-    // An existing, already-saved row never blocks Save - topping it up this
-    // visit is optional.
-    if (step === 2) return form.payments.length > 0 && form.payments.every((p) => p.isExisting || p.amountPaid !== '')
+    // added an extra charge type) needs its starting amount paid filled in -
+    // and, since 'other' can repeat, a description to tell it apart from
+    // any other 'other' charge. An existing, already-saved row never blocks
+    // Save - topping it up this visit is optional.
+    if (step === 2) {
+      return form.payments.length > 0 && form.payments.every((p) => (
+        p.isExisting || (p.amountPaid !== '' && (p.paymentType !== 'other' || p.label.trim() !== ''))
+      ))
+    }
     return true
   }
 
@@ -151,10 +156,12 @@ export default function BookingsCalendar() {
     })
   }
 
+  // 'other' is the one type that can repeat on a booking (DJ, photography,
+  // ...), so it's always offered here even when one is already on the form
+  // - the fixed types drop off the list once used.
   const addPaymentRow = () => {
     const usedTypes = new Set(form.payments.map((p) => p.paymentType))
-    const nextType = PAYMENT_TYPES.find((t) => !usedTypes.has(t))
-    if (!nextType) return
+    const nextType = PAYMENT_TYPES.find((t) => t !== 'other' && !usedTypes.has(t)) || 'other'
     setForm({
       ...form,
       payments: [...form.payments, { ...EMPTY_PAYMENT_ROW, paymentType: nextType, paymentDate: todayISO(), paymentDueDate: todayISO() }]
@@ -261,7 +268,9 @@ export default function BookingsCalendar() {
     // each keeps its own recorded total; this visit's payment, if any, is
     // tracked separately per row via paymentIncrement (see effectiveAmountPaid).
     const existingPayments = (b.payments || []).map((p) => ({
+      id: p.id,
       paymentType: p.paymentType,
+      label: p.label || '',
       committedAmount: p.committedAmount || '',
       amountPaid: p.amountPaid || '',
       paymentIncrement: '',
@@ -352,17 +361,25 @@ export default function BookingsCalendar() {
       guestCount: form.guestCount,
       closedBy: form.closedBy,
       // Only send a payment row that actually changed this visit - a new
-      // row (must be created), or an existing one with a new payment/date.
-      // Skipping untouched existing rows keeps event_history from getting a
-      // no-op entry for every payment type on every unrelated edit.
+      // row (must be created), or an existing one with a new payment/date/
+      // description. Skipping untouched existing rows keeps event_history
+      // from getting a no-op entry for every payment type on every
+      // unrelated edit. Existing rows are matched by id, not paymentType -
+      // 'other' can have several sharing that type.
       payments: form.payments
         .filter((p) => {
           if (!p.isExisting) return true
-          const orig = originalForm.payments.find((op) => op.paymentType === p.paymentType)
-          return (p.paymentIncrement || '') !== '' || p.paymentDate !== orig?.paymentDate || p.paymentDueDate !== orig?.paymentDueDate
+          const orig = originalForm.payments.find((op) => op.id === p.id)
+          return (p.paymentIncrement || '') !== '' || p.paymentDate !== orig?.paymentDate ||
+            p.paymentDueDate !== orig?.paymentDueDate || p.label !== orig?.label
         })
         .map((p) => ({
+          // Existing rows are updated by id (required for 'other', where
+          // paymentType alone doesn't identify one row); omitted for a
+          // brand-new row so the backend creates it instead.
+          id: p.isExisting ? p.id : undefined,
           paymentType: p.paymentType,
+          label: p.label,
           // Committed amount can't be changed once a payment type is on
           // record (only new rows set it) - omitting the key here (rather
           // than sending the unchanged value) tells the backend not to touch it.
@@ -430,7 +447,7 @@ export default function BookingsCalendar() {
           b.hall || '', b.title || '', b.eventType || '', b.start, b.end,
           b.customerName || '', b.customerMobile || '', b.customerEmail || '', b.customerAddress || '',
           b.guestCount || '', b.referredBy || '', b.closedBy || '',
-          p ? PAYMENT_TYPE_LABELS[p.paymentType] || p.paymentType : '',
+          p ? (p.label || PAYMENT_TYPE_LABELS[p.paymentType] || p.paymentType) : '',
           p?.committedAmount || '', p?.amountPaid || '', p?.balance || '', p?.fullyPaid ? 'Yes' : 'No',
           p?.paymentDate || '', p?.paymentDueDate || '', b.notes || b.description || '',
           b.createdBy || '', b.createdDate || ''
@@ -678,12 +695,24 @@ export default function BookingsCalendar() {
                           value={p.paymentType}
                           onChange={(e) => updatePaymentRow(i, { paymentType: e.target.value })}
                         >
-                          {PAYMENT_TYPES.filter((t) => t === p.paymentType || !usedByOthers.has(t)).map((t) => (
+                          {/* 'other' stays selectable regardless of how many rows already use it - it's the one type that can repeat. */}
+                          {PAYMENT_TYPES.filter((t) => t === 'other' || t === p.paymentType || !usedByOthers.has(t)).map((t) => (
                             <option key={t} value={t}>{PAYMENT_TYPE_LABELS[t]}</option>
                           ))}
                         </select>
                       </label>
-                      {p.fullyPaid && <p className="booking-incomplete-warning booking-field-full">🔒 {PAYMENT_TYPE_LABELS[p.paymentType]} is locked because it's marked fully paid.</p>}
+                      {p.paymentType === 'other' && (
+                        <label className="booking-field booking-field-full">
+                          Description *
+                          <input
+                            required
+                            placeholder="e.g. DJ, Photography"
+                            value={p.label}
+                            onChange={(e) => updatePaymentRow(i, { label: e.target.value })}
+                          />
+                        </label>
+                      )}
+                      {p.fullyPaid && <p className="booking-incomplete-warning booking-field-full">🔒 {p.label || PAYMENT_TYPE_LABELS[p.paymentType]} is locked because it's marked fully paid.</p>}
                       {/* A brand-new row (a new booking, an "incomplete" booking's
                           first save, or a payment type just added here) has no
                           committed amount or payment on record at all yet - same
@@ -754,11 +783,10 @@ export default function BookingsCalendar() {
                     </div>
                   )
                 })}
-                {form.payments.length < PAYMENT_TYPES.length && (
-                  <button type="button" className="booking-neutral-btn" onClick={addPaymentRow}>
-                    + Add payment type
-                  </button>
-                )}
+                {/* Always available, even once every fixed type is used - 'other' can always be added again. */}
+                <button type="button" className="booking-neutral-btn" onClick={addPaymentRow}>
+                  + Add payment type
+                </button>
               </div>
             )}
             </fieldset>
