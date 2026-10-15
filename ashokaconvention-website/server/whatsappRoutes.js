@@ -127,7 +127,7 @@ function withPhoneLock(phone, fn) {
 // window) if enabled in Settings. Runs after the response is already sent,
 // so a slow Dualhook send call never delays Meta's acknowledgment.
 async function handleInboundMessage({ phone, name, adSource, buttonReplyId, text, mediaId, mediaType }) {
-  const { isNew } = await recordLead({ phone, name, adSource })
+  const { isNew } = await recordLead({ phone, name, adSource, text })
   // Downloaded and stored before logging, since the message row needs the
   // resulting whatsapp_media id, not Meta's own (short-lived) one.
   const storedMediaId = mediaId ? await storeInboundMedia(mediaId) : null

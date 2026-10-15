@@ -33,28 +33,44 @@ reportRouter.get('/whatsapp-conversion', async (req, res) => {
       adSource: l.adSource,
       converted,
       status: converted ? 'converted' : l.status === 'lost' ? 'lost' : 'open',
-      lostReason: l.lostReason
+      lostReason: l.lostReason,
+      // '' for an ordinary enquiry, else 'job_seeker' / 'spam' - keyword-
+      // flagged by leadClassifier.js as something that isn't a venue
+      // enquiry at all. Excluded from the headline metrics below so a job
+      // seeker or a spam message doesn't dilute the real conversion rate,
+      // but still listed (with its classification) for visibility.
+      classification: l.classification
     }
   })
 
-  const converted = results.filter((r) => r.converted).length
-  const lost = results.filter((r) => r.status === 'lost').length
+  const genuine = results.filter((r) => !r.classification)
+  const converted = genuine.filter((r) => r.converted).length
+  const lost = genuine.filter((r) => r.status === 'lost').length
 
   const lostReasonBreakdown = {}
-  for (const r of results) {
+  for (const r of genuine) {
     if (r.status !== 'lost') continue
     lostReasonBreakdown[r.lostReason] = (lostReasonBreakdown[r.lostReason] || 0) + 1
+  }
+
+  const excludedBreakdown = {}
+  for (const r of results) {
+    if (!r.classification) continue
+    excludedBreakdown[r.classification] = (excludedBreakdown[r.classification] || 0) + 1
   }
 
   res.json({
     start,
     end,
-    totalLeads: results.length,
+    totalLeads: genuine.length,
     converted,
     lost,
-    open: results.length - converted - lost,
-    conversionRate: results.length ? Math.round((converted / results.length) * 1000) / 10 : 0,
+    open: genuine.length - converted - lost,
+    conversionRate: genuine.length ? Math.round((converted / genuine.length) * 1000) / 10 : 0,
     lostReasonBreakdown,
+    // Leads kept out of the counts above - not venue enquiries at all.
+    excludedCount: results.length - genuine.length,
+    excludedBreakdown,
     leads: results
   })
 })
@@ -86,7 +102,9 @@ reportRouter.get('/staff-performance', async (req, res) => {
   }
 
   for (const lead of inRange) {
-    if (!lead.assignedTo) continue
+    // Job-seeker/spam threads (leadClassifier.js) aren't real enquiries -
+    // keep them out of staff activity stats the same way whatsapp-conversion does.
+    if (!lead.assignedTo || lead.classification) continue
     const stat = statFor(lead.assignedTo)
     stat.leadsAssigned += 1
     stat.conversations += lead.messageCount

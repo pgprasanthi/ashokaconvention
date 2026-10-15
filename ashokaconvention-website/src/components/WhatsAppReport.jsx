@@ -6,10 +6,14 @@ import { downloadCSV } from '../utils/csv'
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')
 
 const TABS = [
+  { id: 'all', label: 'All Inquiries' },
   { id: 'closed', label: 'Successfully Closed Deals' },
   { id: 'failed', label: 'Failed Deals' },
-  { id: 'staff', label: 'Staff Performance' }
+  { id: 'staff', label: 'Staff Performance' },
+  { id: 'excluded', label: 'Excluded (Not Enquiries)' }
 ]
+
+const CLASSIFICATION_LABELS = { job_seeker: 'Job Seeker', spam: 'Spam' }
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
@@ -26,7 +30,7 @@ export default function WhatsAppReport() {
   const [staffReport, setStaffReport] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState('closed')
+  const [activeTab, setActiveTab] = useState('all')
 
   const generateReport = async (e) => {
     e.preventDefault()
@@ -53,7 +57,13 @@ export default function WhatsAppReport() {
   const hasReport = report && staffReport
 
   const downloadActiveTab = () => {
-    if (activeTab === 'closed') {
+    if (activeTab === 'all') {
+      downloadCSV(
+        `all-inquiries_${start}_to_${end}.csv`,
+        ['Name', 'Phone', 'First Message', 'Last Message', 'Messages', 'Ad Source', 'Status', 'Reason'],
+        report.leads.filter((l) => !l.classification).map((l) => [l.name || '', l.phone, l.firstMessage, l.lastMessage, l.messageCount, l.adSource || '', l.status, l.lostReason || ''])
+      )
+    } else if (activeTab === 'closed') {
       downloadCSV(
         `closed-deals_${start}_to_${end}.csv`,
         ['Closed By', 'Client', 'Client Phone', 'Booking Date', 'Closed On'],
@@ -65,11 +75,17 @@ export default function WhatsAppReport() {
         ['Name', 'Phone', 'First Message', 'Ad Source', 'Reason'],
         report.leads.filter((l) => l.status === 'lost').map((l) => [l.name || '', l.phone, l.firstMessage, l.adSource || '', l.lostReason || ''])
       )
-    } else {
+    } else if (activeTab === 'staff') {
       downloadCSV(
         `staff-performance_${start}_to_${end}.csv`,
         ['Staff', 'Leads Assigned', 'Conversations', 'Leads Converted', 'Conversion Rate %', 'Not Closed', 'Deals Closed'],
         staffReport.staff.map((s) => [s.name, s.leadsAssigned, s.conversations, s.converted, s.conversionRate, s.lost, s.dealsClosed])
+      )
+    } else {
+      downloadCSV(
+        `excluded-leads_${start}_to_${end}.csv`,
+        ['Name', 'Phone', 'First Message', 'Type', 'Ad Source'],
+        report.leads.filter((l) => l.classification).map((l) => [l.name || '', l.phone, l.firstMessage, CLASSIFICATION_LABELS[l.classification] || l.classification, l.adSource || ''])
       )
     }
   }
@@ -110,7 +126,21 @@ export default function WhatsAppReport() {
               <span className="report-stat-value">{report.lost}</span>
               <span className="report-stat-label">Not Closed</span>
             </div>
+            <div className="report-stat">
+              <span className="report-stat-value">{report.excludedCount}</span>
+              <span className="report-stat-label">Excluded (not enquiries)</span>
+            </div>
           </div>
+          {report.excludedCount > 0 && (
+            <p className="reminder-sub">
+              Kept out of the numbers above - not venue enquiries:{' '}
+              {Object.entries(report.excludedBreakdown)
+                .map(([c, n]) => `${n} ${CLASSIFICATION_LABELS[c] || c}`)
+                .join(', ')}.{' '}
+              Keyword-detected automatically and may miss some (see the "Excluded" tab) -
+              only English phrases are matched.
+            </p>
+          )}
 
           <div className="report-tabs">
             {TABS.map((t) => (
@@ -127,6 +157,42 @@ export default function WhatsAppReport() {
               ⬇ Download CSV
             </button>
           </div>
+
+          {activeTab === 'all' && (
+            <>
+              <h3>All Inquiries</h3>
+              <p>Every genuine WhatsApp enquiry in this date range - the leads behind the summary numbers above (job seekers and spam are kept out, see the "Excluded" tab).</p>
+              <table className="team-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>First Message</th>
+                    <th>Messages</th>
+                    <th>Ad Source</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.leads.filter((l) => !l.classification).map((l) => (
+                    <tr key={l.phone}>
+                      <td>{l.name || '—'}</td>
+                      <td>{l.phone}</td>
+                      <td>{new Date(l.firstMessage).toLocaleDateString()}</td>
+                      <td>{l.messageCount}</td>
+                      <td>{l.adSource || '—'}</td>
+                      <td>
+                        {l.status === 'converted' ? 'Converted' : l.status === 'lost' ? <span title={l.lostReason}>Not closed</span> : 'Open'}
+                      </td>
+                    </tr>
+                  ))}
+                  {report.leads.filter((l) => !l.classification).length === 0 && (
+                    <tr><td colSpan="6">No inquiries in this date range.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
 
           {activeTab === 'closed' && (
             <>
@@ -243,6 +309,42 @@ export default function WhatsAppReport() {
                   ))}
                   {staffReport.staff.length === 0 && (
                     <tr><td colSpan="6">No staff activity in this date range.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {activeTab === 'excluded' && (
+            <>
+              <h3>Excluded (Not Enquiries)</h3>
+              <p>
+                Leads kept out of every number above - automatically flagged by keyword as a job
+                seeker or spam/vendor message, not a venue enquiry. This is a best-effort English-only
+                match, so double check this list for anything that looks like a real enquiry wrongly caught here.
+              </p>
+              <table className="team-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>First Message</th>
+                    <th>Type</th>
+                    <th>Ad Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.leads.filter((l) => l.classification).map((l) => (
+                    <tr key={l.phone}>
+                      <td>{l.name || '—'}</td>
+                      <td>{l.phone}</td>
+                      <td>{new Date(l.firstMessage).toLocaleDateString()}</td>
+                      <td>{CLASSIFICATION_LABELS[l.classification] || l.classification}</td>
+                      <td>{l.adSource || '—'}</td>
+                    </tr>
+                  ))}
+                  {report.leads.filter((l) => l.classification).length === 0 && (
+                    <tr><td colSpan="5">Nothing excluded in this date range.</td></tr>
                   )}
                 </tbody>
               </table>

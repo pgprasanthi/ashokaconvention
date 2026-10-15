@@ -369,9 +369,12 @@ export function ensureSchema() {
         assigned_to TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'open',
         lost_reason TEXT NOT NULL DEFAULT '',
-        last_away_sent TIMESTAMPTZ
+        last_away_sent TIMESTAMPTZ,
+        classification TEXT NOT NULL DEFAULT ''
       );
+      ALTER TABLE whatsapp_leads ADD COLUMN IF NOT EXISTS classification TEXT NOT NULL DEFAULT '';
       CREATE INDEX IF NOT EXISTS idx_whatsapp_leads_status ON whatsapp_leads (status);
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_leads_classification ON whatsapp_leads (classification);
 
       -- One row per media attachment (currently just images) downloaded
       -- from a WhatsApp message and kept permanently - Meta's own media URL

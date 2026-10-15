@@ -1,4 +1,5 @@
 import { query, ensureSchema, dateToISOString } from './db.js'
+import { classifyMessage } from './leadClassifier.js'
 
 // Strips everything but digits and keeps the last 10, so "+91 98765 43210",
 // "919876543210" and "9876543210" all compare equal regardless of how a
@@ -18,7 +19,8 @@ function rowToLead(row) {
     assignedTo: row.assigned_to,
     status: row.status,
     lostReason: row.lost_reason,
-    lastAwaySent: dateToISOString(row.last_away_sent)
+    lastAwaySent: dateToISOString(row.last_away_sent),
+    classification: row.classification
   }
 }
 
@@ -51,24 +53,37 @@ const REGREET_GAP_MS = 60 * 24 * 60 * 60 * 1000
 // Called on every inbound WhatsApp message. Adds a new row the first time a
 // phone number messages in, otherwise bumps the existing row. adSource is
 // only present on the very first message of a conversation that came from a
-// Click-to-WhatsApp ad. Returns { isNew } so callers (the greeting-message
-// trigger) can tell first-time/long-gap contacts apart from ones already
-// in an active conversation.
-export async function recordLead({ phone, name, adSource }) {
+// Click-to-WhatsApp ad. `text` is this message's body, run through the
+// keyword classifier (leadClassifier.js) to flag job-seeker/spam threads
+// mixed into the same inbox - sticky once set, so a later on-topic message
+// doesn't clear an existing flag (see leadClassifier.js for why). Returns
+// { isNew } so callers (the greeting-message trigger) can tell first-time/
+// long-gap contacts apart from ones already in an active conversation.
+export async function recordLead({ phone, name, adSource, text }) {
   await ensureSchema()
   const existing = await findByPhone(phone)
 
   if (existing) {
     const gapMs = Date.now() - new Date(existing.lastMessage).getTime()
     await bumpMessageCount(phone)
+    if (!existing.classification) {
+      const classification = classifyMessage(text)
+      if (classification) {
+        await query(
+          `UPDATE whatsapp_leads SET classification = $1
+           WHERE right(regexp_replace(phone, '\\D', '', 'g'), 10) = right(regexp_replace($2, '\\D', '', 'g'), 10)`,
+          [classification, phone]
+        )
+      }
+    }
     return { isNew: gapMs > REGREET_GAP_MS }
   }
 
   const now = new Date().toISOString()
   await query(
-    `INSERT INTO whatsapp_leads (phone, name, first_message, last_message, message_count, ad_source, assigned_to, status, lost_reason)
-     VALUES ($1, $2, $3, $3, 1, $4, '', 'open', '')`,
-    [phone, name || '', now, adSource || '']
+    `INSERT INTO whatsapp_leads (phone, name, first_message, last_message, message_count, ad_source, assigned_to, status, lost_reason, classification)
+     VALUES ($1, $2, $3, $3, 1, $4, '', 'open', '', $5)`,
+    [phone, name || '', now, adSource || '', classifyMessage(text)]
   )
   return { isNew: true }
 }

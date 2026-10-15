@@ -306,6 +306,12 @@ main{flex:1}
   background:#fee2e2;color:#b91c1c;font-size:0.68rem;font-weight:700;
 }
 
+/* ── Leads page: excluded (not enquiry) badge ── */
+.lead-type-badge{
+  display:inline-block;padding:1px 8px;border-radius:999px;
+  background:#f1f5f9;color:#475569;font-size:0.68rem;font-weight:700;
+}
+
 /* ── Guest landing ── */
 .guest-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}
 .guest-link-btn{

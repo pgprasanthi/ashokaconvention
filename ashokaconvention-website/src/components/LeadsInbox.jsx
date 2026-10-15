@@ -13,6 +13,10 @@ const LOST_REASONS = [
   'Other'
 ]
 
+// Keyword-detected (leadClassifier.js on the server) - not a real venue
+// enquiry. English-only match, so this will miss some.
+const CLASSIFICATION_LABELS = { job_seeker: 'Job Seeker', spam: 'Spam' }
+
 export default function LeadsInbox() {
   const { user } = useAuth()
   const [leads, setLeads] = useState([])
@@ -31,10 +35,12 @@ export default function LeadsInbox() {
   // leaving both empty shows every lead (the default, unfiltered view).
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
+  const [hideExcluded, setHideExcluded] = useState(true)
   const filteredLeads = leads.filter((l) => {
     const day = (l.firstMessage || '').slice(0, 10)
     if (dateStart && day < dateStart) return false
     if (dateEnd && day > dateEnd) return false
+    if (hideExcluded && l.classification) return false
     return true
   })
 
@@ -142,6 +148,10 @@ export default function LeadsInbox() {
             Clear dates
           </button>
         )}
+        <label className="booking-hall-filter" title="Keyword-detected job seeker/spam messages, not real venue enquiries">
+          <input type="checkbox" checked={hideExcluded} onChange={(e) => setHideExcluded(e.target.checked)} />
+          {' '}Hide job seekers/spam
+        </label>
       </div>
 
       {loading ? (
@@ -155,6 +165,7 @@ export default function LeadsInbox() {
               <th>First Message</th>
               <th>Messages</th>
               <th>Ad Source</th>
+              <th>Type</th>
               <th>Assigned To</th>
               <th>Status</th>
               <th></th>
@@ -168,6 +179,11 @@ export default function LeadsInbox() {
                 <td>{new Date(l.firstMessage).toLocaleDateString()}</td>
                 <td>{l.messageCount}</td>
                 <td>{l.adSource || '—'}</td>
+                <td>
+                  {l.classification
+                    ? <span className="lead-type-badge" title="Keyword-detected, not a real enquiry">{CLASSIFICATION_LABELS[l.classification] || l.classification}</span>
+                    : '—'}
+                </td>
                 <td>{l.assignedTo || '—'}</td>
                 <td>
                   {l.status === 'lost' ? (
@@ -186,7 +202,7 @@ export default function LeadsInbox() {
               </tr>
             ))}
             {filteredLeads.length === 0 && (
-              <tr><td colSpan="8">{leads.length === 0 ? 'No WhatsApp leads yet.' : 'No leads in this date range.'}</td></tr>
+              <tr><td colSpan="9">{leads.length === 0 ? 'No WhatsApp leads yet.' : 'No leads match the current filters.'}</td></tr>
             )}
           </tbody>
         </table>
